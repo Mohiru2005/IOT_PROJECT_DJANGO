@@ -124,6 +124,32 @@
           </div>
         </div>
 
+        <!-- ══ EMERGENCY SAFETY AGENT — Alert Banner ══ -->
+        <div class="emergency-banner" id="emergency-banner" style="display:none">
+          <div class="emergency-icon">🔥</div>
+          <div class="emergency-info">
+            <span class="emergency-title">⚠ FIRE DETECTED — SAFE SHUTDOWN ACTIVE</span>
+            <span class="emergency-desc">
+              Temperature exceeded <strong>40.0°C</strong>. All lights have been cut and the door has been unlocked for
+              evacuation.
+              System is in <strong>fire evacuation mode</strong>.
+            </span>
+            <div class="emergency-meta-row">
+              <span class="emergency-chip" id="emergency-temp-chip">🌡️ --°C</span>
+              <span class="emergency-chip" id="emergency-time-chip">🕐 --:--:--</span>
+              <span class="emergency-chip" id="emergency-door-chip">🚪 UNLOCKED</span>
+            </div>
+          </div>
+          <button class="reset-btn-premium" id="emergency-reset-btn" onclick="systemReset()">
+            <span class="reset-btn-ring"></span>
+            <span class="reset-btn-icon">⏻</span>
+            <span class="reset-btn-label">
+              <span class="reset-btn-title">SYSTEM RESET</span>
+              <span class="reset-btn-sub">Restore Normal Operations</span>
+            </span>
+          </button>
+        </div>
+
         <!-- ── Environment ── -->
         <div>
           <div class="section-header" style="margin-bottom:.9rem">
@@ -322,6 +348,10 @@
       lock: 'LOCK',
     };
 
+    // ── Emergency Safety Agent State ──
+    const TEMP_THRESHOLD = 40.0;
+    let emergencyLockdown = false;  // true = system in lockdown
+
     // ── Clock ──
     function updateClock() {
       const now = new Date();
@@ -341,13 +371,15 @@
         setConnected(true);
         [T_TEMP, T_HUM, T_DOOR, T_BED, T_HALL, T_LOCK].forEach(t => mqttClient.subscribe(t));
 
-        // Re-enable UI logic buttons once connected
-        document.getElementById('night-btn').disabled = false;
-        document.getElementById('btn-do-lock').disabled = false;
-        document.getElementById('btn-do-unlock').disabled = false;
-        document.getElementById('toggle-door').disabled = false;
-        document.getElementById('toggle-bed').disabled = false;
-        document.getElementById('toggle-hall').disabled = false;
+        // Re-enable UI logic buttons once connected — BUT NOT during lockdown
+        if (!emergencyLockdown) {
+          document.getElementById('night-btn').disabled = false;
+          document.getElementById('btn-do-lock').disabled = false;
+          document.getElementById('btn-do-unlock').disabled = false;
+          document.getElementById('toggle-door').disabled = false;
+          document.getElementById('toggle-bed').disabled = false;
+          document.getElementById('toggle-hall').disabled = false;
+        }
       });
 
       mqttClient.on('error', () => setConnected(false, 'Error'));
@@ -355,13 +387,29 @@
 
       mqttClient.on('message', (topic, msg) => {
         const payload = msg.toString().trim();
-        if (topic === T_TEMP) { state.temperature = payload; updateEnv(); }
+
+        if (topic === T_TEMP) {
+          state.temperature = payload;
+          updateEnv();
+          // ── Emergency Safety Agent: thermal hazard check ──
+          checkThermalHazard(payload);
+        }
         if (topic === T_HUM) { state.humidity = payload; updateEnv(); }
 
-        if (topic === T_LOCK) { state.lock = payload; updateLock(); }
-        if (topic === T_DOOR) { state.door = payload; updateLight('door'); }
-        if (topic === T_BED) { state.bed = payload; updateLight('bed'); }
-        if (topic === T_HALL) { state.hall = payload; updateLight('hall'); }
+        // During lockdown, IGNORE user-initiated lock/light changes from MQTT
+        // Only allow changes if NOT in lockdown
+        if (topic === T_LOCK) {
+          if (!emergencyLockdown) { state.lock = payload; updateLock(); }
+        }
+        if (topic === T_DOOR) {
+          if (!emergencyLockdown) { state.door = payload; updateLight('door'); }
+        }
+        if (topic === T_BED) {
+          if (!emergencyLockdown) { state.bed = payload; updateLight('bed'); }
+        }
+        if (topic === T_HALL) {
+          if (!emergencyLockdown) { state.hall = payload; updateLight('hall'); }
+        }
       });
     }
 
@@ -465,7 +513,256 @@
       if (mqttClient && mqttClient.connected) mqttClient.publish(topic, payload);
     }
 
+    // ══════════════════════════════════════════════
+    //  EMERGENCY SAFETY AGENT — Core Logic
+    // ══════════════════════════════════════════════
+
+    /**
+     * Check if temperature exceeds the thermal hazard threshold.
+     * - If above threshold and not in lockdown → trigger Safe Shutdown.
+     * - If below threshold and in lockdown → auto-reset (environment is safe).
+     */
+    function checkThermalHazard(tempPayload) {
+      const temp = parseFloat(tempPayload);
+      if (isNaN(temp)) return;
+
+      if (temp > TEMP_THRESHOLD && !emergencyLockdown) {
+        console.warn(`🔥 FIRE DETECTED: ${temp}°C > ${TEMP_THRESHOLD}°C`);
+        executeSafeShutdown(temp);
+      } else if (temp <= TEMP_THRESHOLD && emergencyLockdown) {
+        console.log(`✅ Temperature back to safe: ${temp}°C ≤ ${TEMP_THRESHOLD}°C — auto-resetting...`);
+        autoResetLockdown();
+      }
+    }
+
+    /**
+     * Auto-reset the lockdown when temperature returns to safe levels.
+     */
+    function autoResetLockdown() {
+      fetch('/api/emergency/reset/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+        .then(res => res.json())
+        .then(data => {
+          console.log('✅ Auto-reset complete:', data);
+          emergencyLockdown = false;
+          deactivateLockdownUI();
+          if (navigator.vibrate) navigator.vibrate(50);
+        })
+        .catch(err => {
+          console.error('❌ Auto-reset failed:', err);
+        });
+    }
+
+    /**
+     * Execute the "Safe Shutdown & Evacuation" sequence.
+     * 1. Safety Exit: Unlock the door if locked
+     * 2. Power Cutdown: Turn off all lights
+     * 3. Alerting: Log to Django DB
+     * 4. Lockdown UI: Disable controls until manual reset
+     */
+    function executeSafeShutdown(temperature) {
+      const now = new Date();
+      const doorWasLocked = (state.lock === 'LOCK');
+
+      console.warn('🚨 FIRE EVACUATION — EXECUTING SAFE SHUTDOWN SEQUENCE...');
+
+      // ── 1. SAFETY EXIT ──
+      if (doorWasLocked) {
+        console.warn('🚪 Door is LOCKED → Publishing UNLOCK');
+        publish(T_LOCK, 'UNLOCK');
+        state.lock = 'UNLOCK';
+        updateLock();
+      } else {
+        console.log('🚪 Door already UNLOCKED — no redundant command sent');
+      }
+
+      // ── 2. POWER CUTDOWN ──
+      console.warn('💡 Cutting all lights...');
+      publish(T_DOOR, 'OFF');
+      publish(T_BED, 'OFF');
+      publish(T_HALL, 'OFF');
+      state.door = 'OFF';
+      state.bed = 'OFF';
+      state.hall = 'OFF';
+      ['door', 'bed', 'hall'].forEach(z => updateLight(z));
+
+      // ── 3. ALERTING — Log to Django database ──
+      const eventData = {
+        temperature: temperature,
+        timestamp: now.toISOString(),
+        door_was_locked: doorWasLocked,
+      };
+
+      fetch('/api/emergency/log/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData),
+      })
+        .then(res => res.json())
+        .then(data => {
+          console.log('📋 Emergency event logged to DB:', data);
+        })
+        .catch(err => {
+          console.error('❌ Failed to log emergency event:', err);
+        });
+
+      // ── 4. ACTIVATE LOCKDOWN UI ──
+      emergencyLockdown = true;
+      activateLockdownUI(temperature, now);
+
+      // Haptic feedback (long vibration = emergency)
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+
+      console.warn('🔴 FIRE EVACUATION ACTIVE — Manual reset required via dashboard.');
+    }
+
+    /**
+     * Activate the lockdown UI state.
+     * - Show emergency banner
+     * - Update system status
+     * - Disable all manual controls
+     */
+    function activateLockdownUI(temperature, timestamp) {
+      // Show the emergency banner
+      const banner = document.getElementById('emergency-banner');
+      banner.style.display = 'flex';
+
+      // Update emergency chips
+      document.getElementById('emergency-temp-chip').textContent = `🌡️ ${temperature.toFixed(1)}°C`;
+      const timeStr = (timestamp instanceof Date)
+        ? timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+        : timestamp;
+      document.getElementById('emergency-time-chip').textContent = `🕐 ${timeStr}`;
+      document.getElementById('emergency-door-chip').textContent = '🚪 UNLOCKED';
+
+      // Update system status banner
+      const statusBanner = document.getElementById('sys-status-banner');
+      statusBanner.classList.add('lockdown');
+      document.getElementById('sys-status-text').textContent = '🔴 FIRE EVACUATION ACTIVE';
+      document.getElementById('sys-status-text').style.color = 'var(--red)';
+
+      // Add shake animation to temperature display
+      const tempValue = document.getElementById('temp-value');
+      tempValue.classList.add('temp-danger');
+      setTimeout(() => tempValue.classList.remove('temp-danger'), 700);
+
+      // Disable all control cards
+      document.querySelectorAll('.relay-card').forEach(c => c.classList.add('lockdown-disabled'));
+      document.getElementById('lock-card').classList.add('lockdown-disabled');
+      document.querySelector('.master-card').classList.add('lockdown-disabled');
+
+      // Disable all buttons
+      document.getElementById('toggle-door').disabled = true;
+      document.getElementById('toggle-bed').disabled = true;
+      document.getElementById('toggle-hall').disabled = true;
+      document.getElementById('btn-do-lock').disabled = true;
+      document.getElementById('btn-do-unlock').disabled = true;
+      document.getElementById('night-btn').disabled = true;
+    }
+
+    /**
+     * Deactivate lockdown UI and restore normal controls.
+     */
+    function deactivateLockdownUI() {
+      // Hide emergency banner
+      document.getElementById('emergency-banner').style.display = 'none';
+
+      // Restore system status
+      const statusBanner = document.getElementById('sys-status-banner');
+      statusBanner.classList.remove('lockdown');
+      document.getElementById('sys-status-text').textContent = 'ALL SYSTEMS NOMINAL 🛡️';
+      document.getElementById('sys-status-text').style.color = 'var(--green)';
+
+      // Remove disabled state from cards
+      document.querySelectorAll('.relay-card').forEach(c => c.classList.remove('lockdown-disabled'));
+      document.getElementById('lock-card').classList.remove('lockdown-disabled');
+      document.querySelector('.master-card').classList.remove('lockdown-disabled');
+
+      // Re-enable buttons
+      document.getElementById('toggle-door').disabled = false;
+      document.getElementById('toggle-bed').disabled = false;
+      document.getElementById('toggle-hall').disabled = false;
+      document.getElementById('btn-do-lock').disabled = false;
+      document.getElementById('btn-do-unlock').disabled = false;
+      document.getElementById('night-btn').disabled = false;
+    }
+
+    /**
+     * Manual System Reset — called from the reset button in the emergency banner.
+     * Sends POST to Django to resolve all emergency events and deactivate lockdown.
+     */
+    function systemReset() {
+      if (!emergencyLockdown) return;
+
+      if (!confirm('Are you sure you want to reset the emergency lockdown? Ensure the environment is safe before proceeding.')) {
+        return;
+      }
+
+      fetch('/api/emergency/reset/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+        .then(res => res.json())
+        .then(data => {
+          console.log('✅ System reset complete:', data);
+          emergencyLockdown = false;
+          deactivateLockdownUI();
+
+          // Haptic feedback (short = confirmation)
+          if (navigator.vibrate) navigator.vibrate(50);
+        })
+        .catch(err => {
+          console.error('❌ System reset failed:', err);
+          alert('System reset failed. Please try again or contact support.');
+        });
+    }
+
+    /**
+     * On page load (and periodically), sync lockdown state with the DB.
+     * - If DB says active but JS is not → restore lockdown UI
+     * - If DB says inactive but JS is active → auto-recover (e.g. reset from another tab/admin)
+     */
+    function checkLockdownStatus() {
+      fetch('/api/emergency/status/')
+        .then(res => res.json())
+        .then(data => {
+          if (data.is_active && !emergencyLockdown) {
+            // DB says lockdown is active, but JS doesn't know yet → restore
+            console.warn('🔴 Fire evacuation state detected from server — restoring UI...');
+            emergencyLockdown = true;
+
+            const activatedAt = data.activated_at ? new Date(data.activated_at) : new Date();
+            const temp = data.last_temperature || 0;
+
+            // Force door to unlocked and lights off in state
+            state.lock = 'UNLOCK';
+            state.door = 'OFF';
+            state.bed = 'OFF';
+            state.hall = 'OFF';
+            updateLock();
+            ['door', 'bed', 'hall'].forEach(z => updateLight(z));
+
+            activateLockdownUI(temp, activatedAt);
+
+          } else if (!data.is_active && emergencyLockdown) {
+            // DB says lockdown was cleared (e.g. reset from admin/another tab) → auto-recover
+            console.log('✅ Lockdown cleared on server — syncing UI...');
+            emergencyLockdown = false;
+            deactivateLockdownUI();
+          }
+        })
+        .catch(err => {
+          console.warn('Could not check lockdown status:', err);
+        });
+    }
+
+    // Periodically sync lockdown state with the server (every 10 seconds)
+    setInterval(checkLockdownStatus, 10000);
+
     function toggleLight(zone) {
+      if (emergencyLockdown) return;  // Blocked during lockdown
       const topics = { door: T_DOOR, bed: T_BED, hall: T_HALL };
       const cmd = state[zone] === 'ON' ? 'OFF' : 'ON';
       state[zone] = cmd;
@@ -474,12 +771,14 @@
     }
 
     function setLock(cmd) {
+      if (emergencyLockdown) return;  // Blocked during lockdown
       state.lock = cmd;
       publish(T_LOCK, cmd);
       updateLock();
     }
 
     function nightMode() {
+      if (emergencyLockdown) return;  // Blocked during lockdown
       state.lock = 'LOCK'; state.door = 'OFF'; state.bed = 'OFF'; state.hall = 'OFF';
       publish(T_LOCK, 'LOCK');
       publish(T_DOOR, 'OFF');
@@ -545,6 +844,7 @@
 
     // Initialise
     connect();
+    checkLockdownStatus();  // Restore lockdown state if active
   </script>
 
 </body>

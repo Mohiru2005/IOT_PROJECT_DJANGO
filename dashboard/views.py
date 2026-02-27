@@ -2,6 +2,9 @@ from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
 from django.templatetags.static import static
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+from .models import EmergencyEvent, SystemLockdown
+import json
 
 
 def dashboard(request):
@@ -16,6 +19,100 @@ def dashboard(request):
         'topic_lock': 'mohith123/home/door/lock',
     }
     return render(request, 'dashboard/index.html', context)
+
+
+# ══════════════════════════════════════════════
+#  EMERGENCY SAFETY AGENT — API ENDPOINTS
+# ══════════════════════════════════════════════
+
+@csrf_exempt
+def log_emergency(request):
+    """
+    POST: Log a thermal hazard event to the database.
+    Expects JSON: { "temperature": float, "timestamp": str, "door_was_locked": bool }
+    Also activates the SystemLockdown.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        temperature = float(data.get('temperature', 0))
+        timestamp_str = data.get('timestamp', '')
+        door_was_locked = bool(data.get('door_was_locked', False))
+
+        # Parse the ISO timestamp from the client
+        try:
+            triggered_at = timezone.datetime.fromisoformat(timestamp_str)
+            if timezone.is_naive(triggered_at):
+                triggered_at = timezone.make_aware(triggered_at)
+        except (ValueError, TypeError):
+            triggered_at = timezone.now()
+
+        # Log the emergency event
+        event = EmergencyEvent.objects.create(
+            temperature=temperature,
+            triggered_at=triggered_at,
+            door_was_locked=door_was_locked,
+        )
+
+        # Activate system lockdown
+        lockdown = SystemLockdown.get_status()
+        lockdown.is_active = True
+        lockdown.activated_at = triggered_at
+        lockdown.last_temperature = temperature
+        lockdown.save()
+
+        return JsonResponse({
+            'status': 'logged',
+            'event_id': event.id,
+            'lockdown_active': True,
+        })
+
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@csrf_exempt
+def system_reset(request):
+    """
+    POST: Manually reset the system after an emergency lockdown.
+    Resolves all active emergency events and deactivates lockdown.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    now = timezone.now()
+
+    # Resolve all unresolved emergency events
+    EmergencyEvent.objects.filter(resolved=False).update(
+        resolved=True,
+        resolved_at=now,
+    )
+
+    # Deactivate system lockdown
+    lockdown = SystemLockdown.get_status()
+    lockdown.is_active = False
+    lockdown.save()
+
+    return JsonResponse({
+        'status': 'reset_complete',
+        'lockdown_active': False,
+        'reset_at': now.isoformat(),
+    })
+
+
+def lockdown_status(request):
+    """
+    GET: Check the current lockdown status.
+    Used by the frontend on page load to restore lockdown state.
+    """
+    lockdown = SystemLockdown.get_status()
+    return JsonResponse({
+        'is_active': lockdown.is_active,
+        'activated_at': lockdown.activated_at.isoformat() if lockdown.activated_at else None,
+        'last_temperature': lockdown.last_temperature,
+    })
 
 
 def manifest(request):
