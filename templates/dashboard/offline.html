@@ -1,0 +1,67 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NexusHome – Offline</title>
+    <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+    <style>
+        .offline-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .offline-icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            opacity: 0.7;
+        }
+
+        .offline-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+
+        .offline-desc {
+            color: var(--text-2);
+            font-size: 0.9rem;
+            max-width: 320px;
+            line-height: 1.6;
+        }
+
+        .offline-retry {
+            margin-top: 2rem;
+            padding: 0.7rem 2rem;
+            background: linear-gradient(135deg, var(--purple), #6d28d9);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-bg">
+        <div class="app-bg-grid"></div>
+    </div>
+    <div class="offline-container">
+        <div class="offline-icon">📡</div>
+        <h1 class="offline-title">You're Offline</h1>
+        <p class="offline-desc">NexusHome needs an internet connection to communicate with your smart home devices via
+            MQTT.</p>
+        <button class="offline-retry" onclick="location.reload()">Try Again</button>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,552 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <title>Nexus Home Command Center</title>
+  <meta name="description"
+    content="Real-time smart home dashboard powered by MQTT. Monitor temperature, humidity and control your lights and smart lock remotely." />
+
+  <!-- ══ PWA Meta Tags ══ -->
+  <link rel="manifest" href="{% url 'manifest' %}" />
+  <meta name="theme-color" content="#060912" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <!-- iOS PWA support -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="NexusHome" />
+  <link rel="apple-touch-icon" href="{% static 'dashboard/icons/icon-192.svg' %}" />
+
+  <!-- MS Tile -->
+  <meta name="msapplication-TileColor" content="#060912" />
+
+  <!-- ══ Styles ══ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+  <link rel="stylesheet" href="{% static 'dashboard/css/pwa-mobile.css' %}" />
+
+  <!-- MQTT.js CDN -->
+  <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+
+
+</head>
+
+<body>
+
+  <!-- Animated background -->
+  <div class="app-bg">
+    <div class="app-bg-grid"></div>
+  </div>
+
+
+
+  <div class="app-shell">
+
+    <!-- ══ SIDEBAR (Desktop only — hidden on mobile by pwa-mobile.css) ══ -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">🏠</div>
+        <div class="brand-text">
+          <span class="brand-name">NexusHome</span>
+          <span class="brand-tagline">Intelligent Home Automation</span>
+        </div>
+      </div>
+
+      <span class="nav-section-label">Navigation</span>
+      <div class="nav-item active">
+        <span class="nav-icon">📊</span>
+        <span>Dashboard</span>
+        <span class="nav-badge">Live</span>
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">💡</span>
+        <span>Devices</span>
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">📈</span>
+        <span>Analytics</span>
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">⚙️</span>
+        <span>Settings</span>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="system-status">
+          <div class="status-dot-sm offline" id="sidebar-status-dot"></div>
+          <div class="status-text-sm">
+            HiveMQ MQTT
+            <span id="sidebar-status-text">Connecting…</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ══ MAIN ══ -->
+    <div class="main-content">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="topbar-title">Nexus Home Command Center</span>
+          <span class="topbar-sub" id="today-date">—</span>
+        </div>
+        <div class="topbar-right">
+          <span class="conn-bar offline" id="conn-bar">
+            <span class="conn-dot"></span>
+            <span id="conn-label">Connecting…</span>
+          </span>
+          <div class="live-clock" id="live-clock">00:00:00</div>
+          <div class="topbar-avatar">M</div>
+        </div>
+      </header>
+
+      <!-- Dashboard Body -->
+      <div class="dashboard-body">
+
+        <!-- ── System Status ── -->
+        <div id="sys-status-banner"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
+          <div style="display: flex; flex-direction: column;">
+            <span id="sys-status-label"
+              style="font-size: 0.9rem; color: var(--text-2); font-weight: 500; text-transform: uppercase;">System
+              Status</span>
+            <span id="sys-status-text"
+              style="font-size: 1.2rem; font-weight: 700; color: var(--green); margin-top: 0.2rem;">ALL SYSTEMS NOMINAL
+              🛡️</span>
+          </div>
+        </div>
+
+        <!-- ── Environment ── -->
+        <div>
+          <div class="section-header" style="margin-bottom:.9rem">
+            <span class="section-title">Environment</span>
+            <span class="section-badge">Live Data</span>
+          </div>
+
+          <div class="env-card">
+            <div class="env-grid">
+
+              <!-- Temperature -->
+              <div class="env-item" style="--ei-color: var(--amber)">
+                <span class="env-emoji">🌡️</span>
+                <span class="env-value" id="temp-value" style="color: var(--text-3)">--</span>
+                <span class="env-label">Temperature</span>
+                <span class="env-sub" id="temp-sub">Awaiting data…</span>
+              </div>
+
+              <!-- Humidity -->
+              <div class="env-item" style="--ei-color: var(--cyan)">
+                <span class="env-emoji">💧</span>
+                <span class="env-value" id="hum-value" style="color: var(--text-3)">--</span>
+                <span class="env-label">Humidity</span>
+                <span class="env-sub" id="hum-sub">Awaiting data…</span>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Master Control ── -->
+        <div>
+          <div class="section-header" style="margin-bottom:.6rem">
+            <span class="section-title">Master Control</span>
+            <span class="section-badge">Quick Actions</span>
+          </div>
+
+          <div class="master-card">
+            <div class="master-left">
+              <div class="master-icon">🌙</div>
+              <div class="master-text">
+                <span class="master-title">Night Mode</span>
+                <span class="master-desc">Locks the door &amp; turns off all lights in one tap</span>
+              </div>
+            </div>
+            <button class="master-btn night-btn" id="night-btn" disabled>
+              <span class="master-btn-icon">🌙</span>
+              Activate Night Mode
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Security ── -->
+        <div style="margin-top:1rem">
+          <div class="section-header" style="margin-bottom:.6rem">
+            <span class="section-title">Security</span>
+            <span class="section-badge" id="lock-section-badge">🔒 Secured</span>
+          </div>
+
+          <div class="lock-card" id="lock-card">
+            <div class="lock-icon-side" id="lock-icon-side">🔒</div>
+            <div class="lock-info">
+              <div class="lock-chip">🛡️ Smart Lock</div>
+              <div class="lock-name">Front Door Lock</div>
+              <div class="lock-meta">
+                <span class="meta-pill">📡 {{ topic_lock }}</span>
+              </div>
+            </div>
+            <div class="lock-controls">
+              <div class="lock-state-badge locked" id="lock-state-badge">
+                <span class="lock-state-dot"></span>
+                <span id="lock-state-text">LOCKED</span>
+              </div>
+              <div class="lock-btn-group">
+                <button class="lock-btn btn-lock active" id="btn-do-lock">🔒 Lock</button>
+                <button class="lock-btn btn-unlock" id="btn-do-unlock">🔓 Unlock</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Lighting Zones ── -->
+        <div style="margin-top:1rem">
+          <div class="section-header" style="margin-bottom:.6rem">
+            <span class="section-title">Lighting Zones</span>
+            <span class="section-badge" id="active-lights-badge">0 Active</span>
+          </div>
+
+          <div class="devices-grid">
+
+            <!-- Front Door Light -->
+            <div class="relay-card" id="relay-door">
+              <div class="relay-icon-side" id="icon-door">🚪</div>
+              <div class="relay-info">
+                <div class="relay-chip">⚡ Live Relay</div>
+                <div class="relay-name">Front Door Light</div>
+                <div class="relay-meta">
+                  <span class="meta-pill">🔌 Channel 1</span>
+                  <span class="meta-pill">📡 {{ topic_door }}</span>
+                </div>
+              </div>
+              <div class="relay-controls">
+                <button class="relay-toggle-btn is-off" id="toggle-door">
+                  <span class="relay-toggle-dot"></span>
+                  <span id="label-door">OFF</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Bedroom Light -->
+            <div class="relay-card" id="relay-bed">
+              <div class="relay-icon-side" id="icon-bed">🛏️</div>
+              <div class="relay-info">
+                <div class="relay-chip">⚡ Live Relay</div>
+                <div class="relay-name">Bedroom Light</div>
+                <div class="relay-meta">
+                  <span class="meta-pill">🔌 Channel 2</span>
+                  <span class="meta-pill">📡 {{ topic_bed }}</span>
+                </div>
+              </div>
+              <div class="relay-controls">
+                <button class="relay-toggle-btn is-off" id="toggle-bed">
+                  <span class="relay-toggle-dot"></span>
+                  <span id="label-bed">OFF</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Hallway Light -->
+            <div class="relay-card" id="relay-hall">
+              <div class="relay-icon-side" id="icon-hall">🛋️</div>
+              <div class="relay-info">
+                <div class="relay-chip">⚡ Live Relay</div>
+                <div class="relay-name">Hallway Light</div>
+                <div class="relay-meta">
+                  <span class="meta-pill">🔌 Channel 3</span>
+                  <span class="meta-pill">📡 {{ topic_hall }}</span>
+                </div>
+              </div>
+              <div class="relay-controls">
+                <button class="relay-toggle-btn is-off" id="toggle-hall">
+                  <span class="relay-toggle-dot"></span>
+                  <span id="label-hall">OFF</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div><!-- end dashboard-body -->
+    </div><!-- end main-content -->
+  </div><!-- end app-shell -->
+
+  <!-- ══ BOTTOM NAVIGATION BAR (Mobile) ══ -->
+  <nav class="bottom-nav" id="bottom-nav">
+    <a class="bottom-nav-item active" href="#" data-section="dashboard" id="bnav-dashboard">
+      <span class="bnav-icon">📊</span>
+      <span class="bnav-label">Dashboard</span>
+      <span class="bnav-live-dot" id="bnav-live-dot"></span>
+    </a>
+    <a class="bottom-nav-item" href="#" data-section="devices" id="bnav-devices">
+      <span class="bnav-icon">💡</span>
+      <span class="bnav-label">Devices</span>
+    </a>
+    <a class="bottom-nav-item" href="#" data-section="nightmode" id="bnav-night">
+      <span class="bnav-icon">🌙</span>
+      <span class="bnav-label">Night</span>
+    </a>
+    <a class="bottom-nav-item" href="#" data-section="security" id="bnav-security">
+      <span class="bnav-icon">🔒</span>
+      <span class="bnav-label">Security</span>
+    </a>
+  </nav>
+
+  <script>
+    // ── MQTT Config ──
+    const BROKER = "{{ broker }}";
+    const T_TEMP = "mohith123/home/room1/temperature";
+    const T_HUM = "mohith123/home/room1/humidity";
+
+    // (Other existing topics from django context for logic completion)
+    const T_DOOR = "{{ topic_door }}";
+    const T_BED = "{{ topic_bed }}";
+    const T_HALL = "{{ topic_hall }}";
+    const T_LOCK = "{{ topic_lock }}";
+
+    // ── State ──
+    let mqttClient = null;
+    let state = {
+      temperature: '--',
+      humidity: '--',
+      door: 'OFF',
+      bed: 'OFF',
+      hall: 'OFF',
+      lock: 'LOCK',
+    };
+
+    // ── Clock ──
+    function updateClock() {
+      const now = new Date();
+      const time = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      const date = now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+      document.getElementById('live-clock').textContent = time;
+      document.getElementById('today-date').textContent = date;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ── MQTT ──
+    function connect() {
+      mqttClient = mqtt.connect(BROKER);
+
+      mqttClient.on('connect', () => {
+        setConnected(true);
+        [T_TEMP, T_HUM, T_DOOR, T_BED, T_HALL, T_LOCK].forEach(t => mqttClient.subscribe(t));
+
+        // Re-enable UI logic buttons once connected
+        document.getElementById('night-btn').disabled = false;
+        document.getElementById('btn-do-lock').disabled = false;
+        document.getElementById('btn-do-unlock').disabled = false;
+        document.getElementById('toggle-door').disabled = false;
+        document.getElementById('toggle-bed').disabled = false;
+        document.getElementById('toggle-hall').disabled = false;
+      });
+
+      mqttClient.on('error', () => setConnected(false, 'Error'));
+      mqttClient.on('offline', () => setConnected(false, 'Offline'));
+
+      mqttClient.on('message', (topic, msg) => {
+        const payload = msg.toString().trim();
+        if (topic === T_TEMP) { state.temperature = payload; updateEnv(); }
+        if (topic === T_HUM) { state.humidity = payload; updateEnv(); }
+
+        if (topic === T_LOCK) { state.lock = payload; updateLock(); }
+        if (topic === T_DOOR) { state.door = payload; updateLight('door'); }
+        if (topic === T_BED) { state.bed = payload; updateLight('bed'); }
+        if (topic === T_HALL) { state.hall = payload; updateLight('hall'); }
+      });
+    }
+
+    function setConnected(online, msg) {
+      const bar = document.getElementById('conn-bar');
+      const label = document.getElementById('conn-label');
+      const dot = document.getElementById('sidebar-status-dot');
+      const sideTxt = document.getElementById('sidebar-status-text');
+      const liveDot = document.getElementById('bnav-live-dot');
+      if (online) {
+        bar.className = 'conn-bar online';
+        label.textContent = 'HiveMQ · Connected';
+        dot.className = 'status-dot-sm';
+        sideTxt.textContent = 'HiveMQ · Online';
+        if (liveDot) liveDot.style.display = '';
+      } else {
+        bar.className = 'conn-bar offline';
+        label.textContent = msg || 'Connecting…';
+        dot.className = 'status-dot-sm offline';
+        sideTxt.textContent = msg || 'Connecting…';
+        if (liveDot) liveDot.style.display = 'none';
+      }
+    }
+
+    // ── DOM Updates ──
+    function updateEnv() {
+      const t = state.temperature;
+      const tv = document.getElementById('temp-value');
+      const ts = document.getElementById('temp-sub');
+      if (t === '--' || isNaN(parseFloat(t))) {
+        tv.textContent = '--';
+        tv.style.color = 'var(--text-3)';
+        ts.textContent = 'Awaiting data…';
+      } else {
+        const val = parseFloat(t);
+        tv.textContent = val.toFixed(1) + '°C';
+        tv.style.color = val > 30 ? 'var(--red)' : val < 18 ? 'var(--cyan)' : 'var(--amber)';
+        ts.textContent = val > 30 ? '🔴 Hot' : val < 18 ? '🔵 Cold' : '🟡 Comfortable';
+      }
+      const h = state.humidity;
+      const hv = document.getElementById('hum-value');
+      const hs = document.getElementById('hum-sub');
+      if (h === '--' || isNaN(parseFloat(h))) {
+        hv.textContent = '--';
+        hv.style.color = 'var(--text-3)';
+        hs.textContent = 'Awaiting data…';
+      } else {
+        const val = parseFloat(h);
+        hv.textContent = Math.round(val) + '%';
+        hv.style.color = val > 70 ? 'var(--cyan)' : val < 30 ? 'var(--amber)' : 'var(--green)';
+        hs.textContent = val > 70 ? '💧 High' : val < 30 ? '🟡 Dry' : '🟢 Optimal';
+      }
+    }
+
+
+
+    function updateLight(zone) {
+      const isOn = state[zone] === 'ON';
+      const card = document.getElementById('relay-' + zone);
+      const icon = document.getElementById('icon-' + zone);
+      const btn = document.getElementById('toggle-' + zone);
+      const label = document.getElementById('label-' + zone);
+      const icons = { door: '🚪', bed: '🛏️', hall: '🛋️' };
+
+      card.classList.toggle('is-on', isOn);
+      icon.textContent = isOn ? '💡' : icons[zone];
+      icon.classList.toggle('glow-on', isOn);
+      btn.className = 'relay-toggle-btn ' + (isOn ? 'is-on' : 'is-off');
+      label.textContent = isOn ? 'ON' : 'OFF';
+
+      const active = ['door', 'bed', 'hall'].filter(z => state[z] === 'ON').length;
+      document.getElementById('active-lights-badge').textContent = active + ' Active';
+    }
+
+    function updateLock() {
+      const locked = state.lock === 'LOCK';
+      const card = document.getElementById('lock-card');
+      const badge = document.getElementById('lock-state-badge');
+      const text = document.getElementById('lock-state-text');
+      const icon = document.getElementById('lock-icon-side');
+      const secBadge = document.getElementById('lock-section-badge');
+
+      card.classList.toggle('is-unlocked', !locked);
+      badge.className = 'lock-state-badge ' + (locked ? 'locked' : 'unlocked');
+      text.textContent = locked ? 'LOCKED' : 'UNLOCKED';
+      icon.textContent = locked ? '🔒' : '🔓';
+      secBadge.textContent = locked ? '🔒 Secured' : '🔓 Unlocked';
+
+      // Update bottom nav security icon
+      const secNav = document.getElementById('bnav-security');
+      if (secNav) secNav.querySelector('.bnav-icon').textContent = locked ? '🔒' : '🔓';
+
+      document.getElementById('btn-do-lock').classList.toggle('active', locked);
+      document.getElementById('btn-do-unlock').classList.toggle('active', !locked);
+      document.getElementById('btn-do-lock').disabled = locked;
+      document.getElementById('btn-do-unlock').disabled = !locked;
+    }
+
+    // ── Publish helpers ──
+    function publish(topic, payload) {
+      if (mqttClient && mqttClient.connected) mqttClient.publish(topic, payload);
+    }
+
+    function toggleLight(zone) {
+      const topics = { door: T_DOOR, bed: T_BED, hall: T_HALL };
+      const cmd = state[zone] === 'ON' ? 'OFF' : 'ON';
+      state[zone] = cmd;
+      publish(topics[zone], cmd);
+      updateLight(zone);
+    }
+
+    function setLock(cmd) {
+      state.lock = cmd;
+      publish(T_LOCK, cmd);
+      updateLock();
+    }
+
+    function nightMode() {
+      state.lock = 'LOCK'; state.door = 'OFF'; state.bed = 'OFF'; state.hall = 'OFF';
+      publish(T_LOCK, 'LOCK');
+      publish(T_DOOR, 'OFF');
+      publish(T_BED, 'OFF');
+      publish(T_HALL, 'OFF');
+      updateLock();
+      ['door', 'bed', 'hall'].forEach(z => updateLight(z));
+
+      const btn = document.getElementById('night-btn');
+      btn.classList.add('pulse');
+      setTimeout(() => btn.classList.remove('pulse'), 700);
+
+      // Haptic feedback on supported devices
+      if (navigator.vibrate) navigator.vibrate(50);
+    }
+
+    // ── Wire up buttons ──
+    document.getElementById('toggle-door').addEventListener('click', () => toggleLight('door'));
+    document.getElementById('toggle-bed').addEventListener('click', () => toggleLight('bed'));
+    document.getElementById('toggle-hall').addEventListener('click', () => toggleLight('hall'));
+    document.getElementById('btn-do-lock').addEventListener('click', () => setLock('LOCK'));
+    document.getElementById('btn-do-unlock').addEventListener('click', () => setLock('UNLOCK'));
+    document.getElementById('night-btn').addEventListener('click', nightMode);
+
+    // ── Bottom Nav Interactions ──
+    document.querySelectorAll('.bottom-nav-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (navigator.vibrate) navigator.vibrate(10);
+
+        // Set active state
+        document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+
+        const section = item.dataset.section;
+        if (section === 'nightmode') {
+          nightMode();
+          // Flash back to dashboard after activation
+          setTimeout(() => {
+            document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
+            document.getElementById('bnav-dashboard').classList.add('active');
+          }, 800);
+        } else if (section === 'dashboard') {
+          document.querySelector('.dashboard-body').scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (section === 'devices') {
+          const devicesSection = document.querySelector('.devices-grid');
+          if (devicesSection) devicesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (section === 'security') {
+          const lockSection = document.getElementById('lock-card');
+          if (lockSection) lockSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    // ── Service Worker Registration ──
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/serviceworker.js', { scope: '/' })
+          .then(reg => console.log('✅ SW registered, scope:', reg.scope))
+          .catch(err => console.log('⚠️ SW registration failed:', err));
+      });
+    }
+
+    // Initialise
+    connect();
+  </script>
+
+</body>
+
+</html>
