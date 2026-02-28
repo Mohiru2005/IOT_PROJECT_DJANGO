@@ -29,7 +29,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}" />
+  <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}?v=4" />
   <link rel="stylesheet" href="{% static 'dashboard/css/pwa-mobile.css' %}" />
 
   <!-- MQTT.js CDN -->
@@ -60,20 +60,21 @@
       </div>
 
       <span class="nav-section-label">Navigation</span>
-      <div class="nav-item active">
+      <div class="nav-item active" data-nav="dashboard" id="snav-dashboard">
         <span class="nav-icon">📊</span>
         <span>Dashboard</span>
         <span class="nav-badge">Live</span>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" data-nav="devices" id="snav-devices">
         <span class="nav-icon">💡</span>
         <span>Devices</span>
+        <span class="nav-badge device-count-badge" id="snav-device-count">0</span>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" data-nav="analytics">
         <span class="nav-icon">📈</span>
         <span>Analytics</span>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" data-nav="settings">
         <span class="nav-icon">⚙️</span>
         <span>Settings</span>
       </div>
@@ -301,6 +302,97 @@
         </div>
 
       </div><!-- end dashboard-body -->
+
+      <!-- ══ DEVICES PAGE ══ -->
+      <div class="devices-page" id="devices-page" style="display:none">
+
+        <!-- Header -->
+        <div class="devices-page-header">
+          <div class="devices-header-left">
+            <h2 class="devices-title">🔌 Device Monitor</h2>
+            <span class="devices-subtitle">Real-time health & status of all connected IoT devices</span>
+          </div>
+          <div class="devices-header-right">
+            <div class="devices-stats-row">
+              <div class="dstat-chip online-chip">
+                <span class="dstat-dot online"></span>
+                <span id="devices-online-count">0</span> Online
+              </div>
+              <div class="dstat-chip offline-chip">
+                <span class="dstat-dot offline"></span>
+                <span id="devices-offline-count">0</span> Offline
+              </div>
+              <div class="dstat-chip total-chip">
+                📟 <span id="devices-total-count">0</span> Total
+              </div>
+            </div>
+            <button class="refresh-devices-btn" id="refresh-devices-btn" title="Refresh">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Device cards grid -->
+        <div class="device-monitor-grid" id="device-monitor-grid">
+          <!-- Populated by JS -->
+          <div class="devices-empty-state" id="devices-empty-state">
+            <div class="empty-icon">📡</div>
+            <div class="empty-title">No Devices Detected Yet</div>
+            <div class="empty-desc">Devices will appear here automatically as they send MQTT messages. Make sure your
+              broker is connected.</div>
+          </div>
+        </div>
+
+      </div><!-- end devices-page -->
+
+      <!-- ══ DEVICE DETAIL MODAL ══ -->
+      <div class="device-modal-overlay" id="device-modal-overlay" style="display:none">
+        <div class="device-modal" id="device-modal">
+          <button class="device-modal-close" id="device-modal-close">&times;</button>
+          <div class="device-modal-header">
+            <div class="device-modal-icon" id="dm-icon">📟</div>
+            <div class="device-modal-title-group">
+              <h3 id="dm-name">Device</h3>
+              <span class="dm-type-badge" id="dm-type">sensor</span>
+              <span class="dm-room" id="dm-room">Room</span>
+            </div>
+            <div class="dm-status-badge" id="dm-status">Online</div>
+          </div>
+          <div class="device-modal-body">
+            <div class="dm-stats-grid">
+              <div class="dm-stat">
+                <span class="dm-stat-label">Status</span>
+                <span class="dm-stat-status" id="dm-stat-status">--</span>
+              </div>
+              <div class="dm-stat">
+                <span class="dm-stat-label">Messages Sent</span>
+                <span class="dm-stat-num lg" id="dm-messages">0</span>
+              </div>
+              <div class="dm-stat">
+                <span class="dm-stat-label">Last Value</span>
+                <span class="dm-stat-num mono" id="dm-last-value">--</span>
+              </div>
+              <div class="dm-stat">
+                <span class="dm-stat-label">Last Seen</span>
+                <span class="dm-stat-num" id="dm-lastseen-stat" style="font-size:0.85rem">--</span>
+              </div>
+            </div>
+            <div class="dm-detail-row">
+              <span>📡 MQTT Topic</span>
+              <code id="dm-topic">--</code>
+            </div>
+            <div class="dm-detail-row">
+              <span>🕐 Last Seen</span>
+              <span id="dm-lastseen">--</span>
+            </div>
+            <div class="dm-detail-row">
+              <span>📅 Registered</span>
+              <span id="dm-registered">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- end main-content -->
   </div><!-- end app-shell -->
 
@@ -387,6 +479,9 @@
 
       mqttClient.on('message', (topic, msg) => {
         const payload = msg.toString().trim();
+
+        // ── Device Heartbeat: report to backend ──
+        sendDeviceHeartbeat(topic, payload);
 
         if (topic === T_TEMP) {
           state.temperature = payload;
@@ -803,33 +898,237 @@
     document.getElementById('btn-do-unlock').addEventListener('click', () => setLock('UNLOCK'));
     document.getElementById('night-btn').addEventListener('click', nightMode);
 
+    // ══════════════════════════════════════════════
+    //  DEVICE MONITORING — Frontend Logic
+    // ══════════════════════════════════════════════
+
+    let deviceCache = [];  // Local cache of device data
+    let activeView = 'dashboard';  // 'dashboard' or 'devices'
+
+    /**
+     * Send device heartbeat to the backend whenever an MQTT message arrives.
+     * Throttled: max 1 heartbeat per topic per 5 seconds.
+     */
+    const heartbeatTimers = {};
+    function sendDeviceHeartbeat(topic, value) {
+      const key = topic;
+      if (heartbeatTimers[key]) return;  // Already throttled
+
+      heartbeatTimers[key] = true;
+      setTimeout(() => { heartbeatTimers[key] = false; }, 5000);
+
+      fetch('/api/devices/heartbeat/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, value }),
+      }).catch(err => console.warn('Heartbeat failed:', err));
+    }
+
+    /**
+     * Fetch all devices from the backend and render the Devices page.
+     */
+    function fetchDevices() {
+      fetch('/api/devices/')
+        .then(res => res.json())
+        .then(data => {
+          deviceCache = data.devices || [];
+          renderDevicesPage();
+        })
+        .catch(err => console.warn('Failed to fetch devices:', err));
+    }
+
+    /**
+     * Render the device monitoring grid.
+     */
+    function renderDevicesPage() {
+      const grid = document.getElementById('device-monitor-grid');
+      const emptyState = document.getElementById('devices-empty-state');
+
+      // Stats
+      const online = deviceCache.filter(d => d.status === 'online').length;
+      const offline = deviceCache.filter(d => d.status !== 'online').length;
+      document.getElementById('devices-online-count').textContent = online;
+      document.getElementById('devices-offline-count').textContent = offline;
+      document.getElementById('devices-total-count').textContent = deviceCache.length;
+
+      // Sidebar badge
+      const snavBadge = document.getElementById('snav-device-count');
+      if (snavBadge) snavBadge.textContent = deviceCache.length;
+
+      if (deviceCache.length === 0) {
+        emptyState.style.display = 'flex';
+        // Remove any device cards
+        grid.querySelectorAll('.device-monitor-card').forEach(c => c.remove());
+        return;
+      }
+
+      emptyState.style.display = 'none';
+
+      // Remove old cards
+      grid.querySelectorAll('.device-monitor-card').forEach(c => c.remove());
+
+      deviceCache.forEach(device => {
+        const card = document.createElement('div');
+        card.className = `device-monitor-card ${device.status}`;
+        card.setAttribute('data-device-id', device.id);
+
+        const statusLabel = device.status === 'online' ? '🟢 Online' :
+          device.status === 'degraded' ? '🟡 Degraded' : '🔴 Offline';
+
+        const lastSeenStr = device.last_seen
+          ? new Date(device.last_seen).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+          : 'Never';
+
+        card.innerHTML = `
+          <div class="dmc-header">
+            <div class="dmc-icon">${device.icon}</div>
+            <div class="dmc-status-dot ${device.status}"></div>
+          </div>
+          <div class="dmc-name">${device.name}</div>
+          <div class="dmc-room">${device.room}</div>
+          <div class="dmc-status-row">
+            <span class="dmc-status-badge ${device.status}">${statusLabel}</span>
+          </div>
+          <div class="dmc-footer">
+            <span class="dmc-last-seen">🕐 ${lastSeenStr}</span>
+            <span class="dmc-msg-count">📨 ${device.total_messages}</span>
+          </div>
+          <div class="dmc-value-chip">${device.last_value || '--'}</div>
+        `;
+
+        card.addEventListener('click', () => openDeviceModal(device.id));
+        grid.appendChild(card);
+      });
+    }
+
+    /**
+     * Open the device detail modal.
+     */
+    function openDeviceModal(deviceId) {
+      const device = deviceCache.find(d => d.id === deviceId);
+      if (!device) return;
+
+      document.getElementById('dm-icon').textContent = device.icon;
+      document.getElementById('dm-name').textContent = device.name;
+      document.getElementById('dm-type').textContent = device.device_type;
+      document.getElementById('dm-room').textContent = '📍 ' + device.room;
+
+      const statusBadge = document.getElementById('dm-status');
+      statusBadge.textContent = device.status === 'online' ? '🟢 Online' :
+        device.status === 'degraded' ? '🟡 Degraded' : '🔴 Offline';
+      statusBadge.className = 'dm-status-badge ' + device.status;
+
+      // Status in modal stats
+      const statStatus = document.getElementById('dm-stat-status');
+      statStatus.textContent = device.status === 'online' ? '🟢 Online' : '🔴 Offline';
+      statStatus.className = 'dm-stat-status ' + device.status;
+
+      document.getElementById('dm-messages').textContent = device.total_messages.toLocaleString();
+      document.getElementById('dm-last-value').textContent = device.last_value || '--';
+      document.getElementById('dm-topic').textContent = device.mqtt_topic;
+
+      const lastSeenFull = device.last_seen
+        ? new Date(device.last_seen).toLocaleString('en-IN')
+        : 'Never';
+      document.getElementById('dm-lastseen').textContent = lastSeenFull;
+      document.getElementById('dm-lastseen-stat').textContent = device.last_seen
+        ? new Date(device.last_seen).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+        : 'Never';
+      document.getElementById('dm-registered').textContent = new Date(device.registered_at).toLocaleDateString('en-IN');
+
+      document.getElementById('device-modal-overlay').style.display = 'flex';
+    }
+
+    function closeDeviceModal() {
+      document.getElementById('device-modal-overlay').style.display = 'none';
+    }
+
+    document.getElementById('device-modal-close').addEventListener('click', closeDeviceModal);
+    document.getElementById('device-modal-overlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeDeviceModal();
+    });
+
+    /**
+     * Switch between Dashboard and Devices views.
+     */
+    function switchView(view) {
+      activeView = view;
+      const dashBody = document.querySelector('.dashboard-body');
+      const devicesPage = document.getElementById('devices-page');
+
+      if (view === 'devices') {
+        dashBody.style.display = 'none';
+        devicesPage.style.display = 'flex';
+        fetchDevices();
+      } else {
+        dashBody.style.display = '';
+        devicesPage.style.display = 'none';
+      }
+
+      // Update sidebar active state
+      document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
+      const sideItem = document.querySelector(`.sidebar .nav-item[data-nav="${view}"]`);
+      if (sideItem) sideItem.classList.add('active');
+
+      // Update bottom nav active state
+      document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
+      const bottomItem = document.querySelector(`.bottom-nav-item[data-section="${view}"]`);
+      if (bottomItem) bottomItem.classList.add('active');
+    }
+
+    // Auto-refresh devices page every 10 seconds when visible
+    setInterval(() => {
+      if (activeView === 'devices') fetchDevices();
+    }, 10000);
+
+    // Refresh button
+    document.getElementById('refresh-devices-btn').addEventListener('click', () => {
+      const btn = document.getElementById('refresh-devices-btn');
+      btn.classList.add('spinning');
+      fetchDevices();
+      setTimeout(() => btn.classList.remove('spinning'), 600);
+    });
+
+    // ── Sidebar Nav Interactions ──
+    document.querySelectorAll('.sidebar .nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const nav = item.dataset.nav;
+        if (nav === 'dashboard' || nav === 'devices') {
+          switchView(nav);
+        }
+      });
+    });
+
     // ── Bottom Nav Interactions ──
     document.querySelectorAll('.bottom-nav-item').forEach(item => {
       item.addEventListener('click', (e) => {
         e.preventDefault();
         if (navigator.vibrate) navigator.vibrate(10);
 
-        // Set active state
-        document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-
         const section = item.dataset.section;
+
         if (section === 'nightmode') {
           nightMode();
-          // Flash back to dashboard after activation
           setTimeout(() => {
             document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
             document.getElementById('bnav-dashboard').classList.add('active');
           }, 800);
         } else if (section === 'dashboard') {
+          switchView('dashboard');
           document.querySelector('.dashboard-body').scrollTo({ top: 0, behavior: 'smooth' });
         } else if (section === 'devices') {
-          const devicesSection = document.querySelector('.devices-grid');
-          if (devicesSection) devicesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          switchView('devices');
         } else if (section === 'security') {
-          const lockSection = document.getElementById('lock-card');
-          if (lockSection) lockSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          switchView('dashboard');
+          setTimeout(() => {
+            const lockSection = document.getElementById('lock-card');
+            if (lockSection) lockSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
         }
+
+        // Set active state
+        document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
       });
     });
 

@@ -3,8 +3,9 @@ from django.http import JsonResponse, HttpResponse
 from django.templatetags.static import static
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
-from .models import EmergencyEvent, SystemLockdown
+from .models import EmergencyEvent, SystemLockdown, Device, DeviceHealthLog
 import json
+import random
 
 
 def dashboard(request):
@@ -226,3 +227,175 @@ self.addEventListener('fetch', (event) => {
 def offline(request):
     """Simple offline fallback page."""
     return render(request, 'dashboard/offline.html')
+
+
+# ══════════════════════════════════════════════
+#  DEVICE MONITORING — API ENDPOINTS
+# ══════════════════════════════════════════════
+
+# Mapping from known MQTT topic patterns to device info
+DEVICE_TOPIC_MAP = {
+    'temperature': {'name': 'Temperature Sensor', 'type': 'sensor', 'icon': '🌡️', 'room': 'Room 1'},
+    'humidity': {'name': 'Humidity Sensor', 'type': 'sensor', 'icon': '💧', 'room': 'Room 1'},
+    'door/light': {'name': 'Front Door Light', 'type': 'light', 'icon': '🚪', 'room': 'Entrance'},
+    'bedroom/light': {'name': 'Bedroom Light', 'type': 'light', 'icon': '🛏️', 'room': 'Bedroom'},
+    'hall/light': {'name': 'Hallway Light', 'type': 'light', 'icon': '🛋️', 'room': 'Hallway'},
+    'door/lock': {'name': 'Front Door Lock', 'type': 'lock', 'icon': '🔒', 'room': 'Entrance'},
+}
+
+
+def _identify_device(topic):
+    """Identify device type/name/icon/room from MQTT topic."""
+    for pattern, info in DEVICE_TOPIC_MAP.items():
+        if pattern in topic:
+            return info
+    # Fallback for unknown topics
+    return {
+        'name': topic.split('/')[-1].replace('_', ' ').title(),
+        'type': 'other',
+        'icon': '📟',
+        'room': 'Unknown',
+    }
+
+
+@csrf_exempt
+def device_heartbeat(request):
+    """
+    POST: Register or update a device heartbeat.
+    Called by the frontend whenever an MQTT message is received.
+    Expects JSON: { "topic": str, "value": str }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        topic = data.get('topic', '')
+        value = data.get('value', '')
+
+        if not topic:
+            return JsonResponse({'error': 'topic is required'}, status=400)
+
+        now = timezone.now()
+        info = _identify_device(topic)
+
+        device, created = Device.objects.get_or_create(
+            mqtt_topic=topic,
+            defaults={
+                'name': info['name'],
+                'device_type': info['type'],
+                'icon': info['icon'],
+                'room': info['room'],
+                'status': 'online',
+                'last_seen': now,
+                'last_value': str(value)[:100],
+                'signal_strength': random.randint(75, 98),
+                'total_messages': 1,
+            }
+        )
+
+        if not created:
+            # Update existing device
+            device.status = 'online'
+            device.last_seen = now
+            device.last_value = str(value)[:100]
+            device.total_messages += 1
+            # Simulate slight signal variation
+            device.signal_strength = max(50, min(100,
+                device.signal_strength + random.randint(-3, 3)
+            ))
+            device.save()
+
+        # Log health snapshot (throttled: max once per 30 seconds per device)
+        recent_log = DeviceHealthLog.objects.filter(
+            device=device
+        ).first()
+
+        should_log = (
+            not recent_log or
+            (now - recent_log.timestamp).total_seconds() >= 30
+        )
+
+        if should_log:
+            DeviceHealthLog.objects.create(
+                device=device,
+                status=device.status,
+                signal_strength=device.signal_strength,
+                health_score=device.health_score,
+                value=str(value)[:100],
+            )
+
+        return JsonResponse({
+            'status': 'ok',
+            'device_id': device.id,
+            'created': created,
+            'health_score': device.health_score,
+        })
+
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+def device_list(request):
+    """
+    GET: Return all registered devices with their current status and health.
+    """
+    # Auto-mark offline: any device not seen in 60s
+    stale_cutoff = timezone.now() - timezone.timedelta(seconds=60)
+    Device.objects.filter(
+        last_seen__lt=stale_cutoff, status='online'
+    ).update(status='offline')
+
+    devices = Device.objects.all()
+    result = []
+    for d in devices:
+        result.append({
+            'id': d.id,
+            'name': d.name,
+            'device_type': d.device_type,
+            'mqtt_topic': d.mqtt_topic,
+            'status': d.status,
+            'last_seen': d.last_seen.isoformat() if d.last_seen else None,
+            'last_value': d.last_value,
+            'signal_strength': d.signal_strength,
+            'health_score': d.health_score,
+            'total_messages': d.total_messages,
+            'error_count': d.error_count,
+            'firmware_version': d.firmware_version,
+            'icon': d.icon,
+            'room': d.room,
+            'registered_at': d.registered_at.isoformat(),
+            'uptime_seconds': d.uptime_seconds,
+        })
+
+    return JsonResponse({'devices': result})
+
+
+def device_health_history(request, device_id):
+    """
+    GET: Return health log history for a specific device.
+    Optional query param: ?limit=N (default 50)
+    """
+    try:
+        device = Device.objects.get(pk=device_id)
+    except Device.DoesNotExist:
+        return JsonResponse({'error': 'Device not found'}, status=404)
+
+    limit = int(request.GET.get('limit', 50))
+    logs = DeviceHealthLog.objects.filter(device=device)[:limit]
+
+    history = []
+    for log in logs:
+        history.append({
+            'timestamp': log.timestamp.isoformat(),
+            'status': log.status,
+            'signal_strength': log.signal_strength,
+            'health_score': log.health_score,
+            'value': log.value,
+        })
+
+    return JsonResponse({
+        'device_id': device.id,
+        'device_name': device.name,
+        'history': history,
+    })
