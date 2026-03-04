@@ -29,11 +29,12 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}?v=4" />
+  <link rel="stylesheet" href="{% static 'dashboard/css/style.css' %}?v=8" />
   <link rel="stylesheet" href="{% static 'dashboard/css/pwa-mobile.css' %}" />
 
   <!-- MQTT.js CDN -->
   <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
 
 </head>
@@ -70,10 +71,12 @@
         <span>Devices</span>
         <span class="nav-badge device-count-badge" id="snav-device-count">0</span>
       </div>
-      <div class="nav-item" data-nav="analytics">
+      <div class="nav-item" data-nav="analytics" id="snav-analytics">
         <span class="nav-icon">📈</span>
         <span>Analytics</span>
+        <span class="nav-badge">1h</span>
       </div>
+
       <div class="nav-item" data-nav="settings">
         <span class="nav-icon">⚙️</span>
         <span>Settings</span>
@@ -301,6 +304,7 @@
           </div>
         </div>
 
+
       </div><!-- end dashboard-body -->
 
       <!-- ══ DEVICES PAGE ══ -->
@@ -344,6 +348,66 @@
         </div>
 
       </div><!-- end devices-page -->
+
+      <!-- ══ ANALYTICS PAGE ══ -->
+      <div class="analytics-page" id="analytics-page" style="display:none">
+
+        <!-- Header -->
+        <div class="analytics-page-header">
+          <div class="analytics-header-left">
+            <h2 class="analytics-title">📈 Sensor Analytics</h2>
+            <span class="analytics-subtitle">Temperature & Humidity — 1-hour rolling window</span>
+          </div>
+          <div class="analytics-header-right">
+            <div class="analytics-legend">
+              <span class="legend-chip legend-temp"><span class="legend-dot" style="background:var(--amber)"></span>
+                Temperature</span>
+              <span class="legend-chip legend-hum"><span class="legend-dot" style="background:var(--cyan)"></span>
+                Humidity</span>
+            </div>
+            <button class="refresh-analytics-btn" id="refresh-analytics-btn" title="Refresh">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Chart + Stats Side-by-Side -->
+        <div class="analytics-content-row">
+          <!-- Chart Card (left, larger) -->
+          <div class="analytics-card">
+            <div class="analytics-chart-wrap">
+              <canvas id="analytics-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Stats Column (right side) -->
+          <div class="analytics-stats-col">
+            <div class="analytics-stat-card">
+              <span class="astat-icon">🌡️</span>
+              <span class="astat-value" id="astat-temp-avg">--</span>
+              <span class="astat-label">Avg Temp</span>
+            </div>
+            <div class="analytics-stat-card">
+              <span class="astat-icon">💧</span>
+              <span class="astat-value" id="astat-hum-avg">--</span>
+              <span class="astat-label">Avg Humidity</span>
+            </div>
+            <div class="analytics-stat-card">
+              <span class="astat-icon">📊</span>
+              <span class="astat-value" id="astat-readings">--</span>
+              <span class="astat-label">Readings</span>
+            </div>
+            <div class="analytics-stat-card">
+              <span class="astat-icon">⏱️</span>
+              <span class="astat-value" id="astat-span">--</span>
+              <span class="astat-label">Time Span</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end analytics-page -->
+
+
 
       <!-- ══ DEVICE DETAIL MODAL ══ -->
       <div class="device-modal-overlay" id="device-modal-overlay" style="display:none">
@@ -406,6 +470,10 @@
     <a class="bottom-nav-item" href="#" data-section="devices" id="bnav-devices">
       <span class="bnav-icon">💡</span>
       <span class="bnav-label">Devices</span>
+    </a>
+    <a class="bottom-nav-item" href="#" data-section="analytics" id="bnav-analytics">
+      <span class="bnav-icon">📈</span>
+      <span class="bnav-label">Analytics</span>
     </a>
     <a class="bottom-nav-item" href="#" data-section="nightmode" id="bnav-night">
       <span class="bnav-icon">🌙</span>
@@ -490,6 +558,11 @@
           checkThermalHazard(payload);
         }
         if (topic === T_HUM) { state.humidity = payload; updateEnv(); }
+
+        // Live chart update when both temp & humidity are available
+        if ((topic === T_TEMP || topic === T_HUM) && state.temperature !== '--' && state.humidity !== '--') {
+          pushLiveReading(parseFloat(state.temperature), parseFloat(state.humidity));
+        }
 
         // During lockdown, IGNORE user-initiated lock/light changes from MQTT
         // Only allow changes if NOT in lockdown
@@ -903,7 +976,7 @@
     // ══════════════════════════════════════════════
 
     let deviceCache = [];  // Local cache of device data
-    let activeView = 'dashboard';  // 'dashboard' or 'devices'
+    let activeView = 'dashboard';  // 'dashboard', 'devices', or 'analytics'
 
     /**
      * Send device heartbeat to the backend whenever an MQTT message arrives.
@@ -1055,14 +1128,21 @@
       activeView = view;
       const dashBody = document.querySelector('.dashboard-body');
       const devicesPage = document.getElementById('devices-page');
+      const analyticsPage = document.getElementById('analytics-page');
+
+      // Hide all pages
+      dashBody.style.display = 'none';
+      devicesPage.style.display = 'none';
+      analyticsPage.style.display = 'none';
 
       if (view === 'devices') {
-        dashBody.style.display = 'none';
         devicesPage.style.display = 'flex';
         fetchDevices();
+      } else if (view === 'analytics') {
+        analyticsPage.style.display = 'flex';
+        fetchAnalytics();
       } else {
         dashBody.style.display = '';
-        devicesPage.style.display = 'none';
       }
 
       // Update sidebar active state
@@ -1076,10 +1156,10 @@
       if (bottomItem) bottomItem.classList.add('active');
     }
 
-    // Auto-refresh devices page every 10 seconds when visible
+    // Auto-refresh devices page every 15 seconds when visible
     setInterval(() => {
       if (activeView === 'devices') fetchDevices();
-    }, 10000);
+    }, 15000);
 
     // Refresh button
     document.getElementById('refresh-devices-btn').addEventListener('click', () => {
@@ -1089,11 +1169,13 @@
       setTimeout(() => btn.classList.remove('spinning'), 600);
     });
 
+
+
     // ── Sidebar Nav Interactions ──
     document.querySelectorAll('.sidebar .nav-item').forEach(item => {
       item.addEventListener('click', () => {
         const nav = item.dataset.nav;
-        if (nav === 'dashboard' || nav === 'devices') {
+        if (nav === 'dashboard' || nav === 'devices' || nav === 'analytics') {
           switchView(nav);
         }
       });
@@ -1118,6 +1200,8 @@
           document.querySelector('.dashboard-body').scrollTo({ top: 0, behavior: 'smooth' });
         } else if (section === 'devices') {
           switchView('devices');
+        } else if (section === 'analytics') {
+          switchView('analytics');
         } else if (section === 'security') {
           switchView('dashboard');
           setTimeout(() => {
@@ -1140,6 +1224,173 @@
           .catch(err => console.log('⚠️ SW registration failed:', err));
       });
     }
+
+    // ══════════════════════════════════════════════
+    //  ANALYTICS — Chart.js Logic
+    // ══════════════════════════════════════════════
+
+    let analyticsChart = null;
+    const MAX_CHART_POINTS = 720;  // 1 hour at 5s intervals
+
+    function createAnalyticsChart() {
+      const ctx = document.getElementById('analytics-chart').getContext('2d');
+      analyticsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Temperature (°C)',
+              data: [],
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.08)',
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'yTemp',
+            },
+            {
+              label: 'Humidity (%)',
+              data: [],
+              borderColor: '#22d3ee',
+              backgroundColor: 'rgba(34, 211, 238, 0.06)',
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'yHum',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 400 },
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            legend: {
+              display: false,
+            },
+            tooltip: {
+              backgroundColor: 'rgba(6, 9, 18, 0.9)',
+              titleColor: '#e2e8f0',
+              bodyColor: '#94a3b8',
+              borderColor: 'rgba(139, 92, 246, 0.3)',
+              borderWidth: 1,
+              padding: 10,
+              cornerRadius: 8,
+            },
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: '#475569',
+                font: { size: 10, family: 'JetBrains Mono' },
+                maxTicksLimit: 10,
+                maxRotation: 0,
+              },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+            },
+            yTemp: {
+              type: 'linear',
+              position: 'left',
+              min: 0,
+              max: 50,
+              ticks: {
+                color: '#f59e0b',
+                font: { size: 10, family: 'JetBrains Mono' },
+                callback: v => v + '°C',
+              },
+              grid: { color: 'rgba(245, 158, 11, 0.06)' },
+            },
+            yHum: {
+              type: 'linear',
+              position: 'right',
+              min: 0,
+              max: 100,
+              ticks: {
+                color: '#22d3ee',
+                font: { size: 10, family: 'JetBrains Mono' },
+                callback: v => v + '%',
+              },
+              grid: { drawOnChartArea: false },
+            },
+          },
+        },
+      });
+    }
+
+    function fetchAnalytics() {
+      fetch('/api/analytics/')
+        .then(res => res.json())
+        .then(data => {
+          if (!analyticsChart) createAnalyticsChart();
+
+          const readings = data.readings || [];
+          const labels = readings.map(r => r.timestamp);
+          const temps = readings.map(r => r.temperature);
+          const hums = readings.map(r => r.humidity);
+
+          analyticsChart.data.labels = labels;
+          analyticsChart.data.datasets[0].data = temps;
+          analyticsChart.data.datasets[1].data = hums;
+          analyticsChart.update('none');
+
+          updateAnalyticsStats(temps, hums, readings.length);
+        })
+        .catch(err => console.warn('Analytics fetch failed:', err));
+    }
+
+    function updateAnalyticsStats(temps, hums, count) {
+      if (count === 0) return;
+      const avgTemp = (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1);
+      const avgHum = (hums.reduce((a, b) => a + b, 0) / hums.length).toFixed(1);
+      document.getElementById('astat-temp-avg').textContent = avgTemp + '°C';
+      document.getElementById('astat-hum-avg').textContent = avgHum + '%';
+      document.getElementById('astat-readings').textContent = count;
+      const spanMin = Math.round(count * 5 / 60);
+      document.getElementById('astat-span').textContent = spanMin + ' min';
+    }
+
+    /**
+     * Push a live MQTT reading into the chart (called from message handler).
+     */
+    function pushLiveReading(temp, hum) {
+      if (!analyticsChart || activeView !== 'analytics') return;
+      const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+      analyticsChart.data.labels.push(now);
+      analyticsChart.data.datasets[0].data.push(temp);
+      analyticsChart.data.datasets[1].data.push(hum);
+
+      // Trim to max points
+      if (analyticsChart.data.labels.length > MAX_CHART_POINTS) {
+        analyticsChart.data.labels.shift();
+        analyticsChart.data.datasets[0].data.shift();
+        analyticsChart.data.datasets[1].data.shift();
+      }
+
+      analyticsChart.update('none');
+    }
+
+    // Refresh button for analytics
+    document.getElementById('refresh-analytics-btn').addEventListener('click', () => {
+      const btn = document.getElementById('refresh-analytics-btn');
+      btn.classList.add('spinning');
+      fetchAnalytics();
+      setTimeout(() => btn.classList.remove('spinning'), 600);
+    });
+
+    // Auto-refresh analytics every 30s when visible
+    setInterval(() => {
+      if (activeView === 'analytics') fetchAnalytics();
+    }, 30000);
 
     // Initialise
     connect();

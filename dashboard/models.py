@@ -1,10 +1,17 @@
 from django.db import models
+from django.utils import timezone
 
 
 class SensorReading(models.Model):
     temperature = models.FloatField()
     humidity = models.FloatField()
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        """Save and auto-purge readings older than 60 minutes."""
+        super().save(*args, **kwargs)
+        cutoff = timezone.now() - timezone.timedelta(minutes=60)
+        SensorReading.objects.filter(timestamp__lt=cutoff).delete()
 
     def __str__(self):
         return f"Temp: {self.temperature}°C, Hum: {self.humidity}% at {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"

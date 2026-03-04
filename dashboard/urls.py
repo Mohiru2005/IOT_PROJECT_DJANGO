@@ -16,4 +16,7 @@ urlpatterns = [
     path('api/devices/', views.device_list, name='device-list'),
     path('api/devices/heartbeat/', views.device_heartbeat, name='device-heartbeat'),
     path('api/devices/<int:device_id>/health/', views.device_health_history, name='device-health'),
+
+    # ── Analytics API ──
+    path('api/analytics/', views.analytics_data, name='analytics-data'),
 ]

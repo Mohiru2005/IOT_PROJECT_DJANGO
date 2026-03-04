@@ -3,7 +3,7 @@ from django.http import JsonResponse, HttpResponse
 from django.templatetags.static import static
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
-from .models import EmergencyEvent, SystemLockdown, Device, DeviceHealthLog
+from .models import SensorReading, EmergencyEvent, SystemLockdown, Device, DeviceHealthLog
 import json
 import random
 
@@ -325,6 +325,21 @@ def device_heartbeat(request):
                 value=str(value)[:100],
             )
 
+        # ── Also store a SensorReading if this is a temp or humidity topic ──
+        try:
+            float_val = float(value)
+            if 'temperature' in topic:
+                # Find latest humidity from DB to pair with
+                last_hum_device = Device.objects.filter(mqtt_topic__contains='humidity').first()
+                last_hum = float(last_hum_device.last_value) if last_hum_device and last_hum_device.last_value else 0.0
+                SensorReading.objects.create(temperature=float_val, humidity=last_hum)
+            elif 'humidity' in topic:
+                last_temp_device = Device.objects.filter(mqtt_topic__contains='temperature').first()
+                last_temp = float(last_temp_device.last_value) if last_temp_device and last_temp_device.last_value else 0.0
+                SensorReading.objects.create(temperature=last_temp, humidity=float_val)
+        except (ValueError, TypeError):
+            pass  # Non-numeric value, skip sensor reading storage
+
         return JsonResponse({
             'status': 'ok',
             'device_id': device.id,
@@ -399,3 +414,27 @@ def device_health_history(request, device_id):
         'device_name': device.name,
         'history': history,
     })
+
+
+# ══════════════════════════════════════════════
+#  ANALYTICS — API ENDPOINT
+# ══════════════════════════════════════════════
+
+def analytics_data(request):
+    """
+    GET: Return the last 720 SensorReading rows (1-hour at 5s intervals)
+    for initial chart population.
+    """
+    readings = SensorReading.objects.order_by('-timestamp')[:720]
+    # Reverse so oldest is first (chronological order for chart)
+    readings = list(reversed(readings))
+
+    data = []
+    for r in readings:
+        data.append({
+            'temperature': r.temperature,
+            'humidity': r.humidity,
+            'timestamp': r.timestamp.strftime('%H:%M:%S'),
+        })
+
+    return JsonResponse({'readings': data, 'count': len(data)})
