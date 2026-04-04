@@ -76,6 +76,11 @@
         <span>Analytics</span>
         <span class="nav-badge">1h</span>
       </div>
+      <div class="nav-item" data-nav="scheduler" id="snav-scheduler">
+        <span class="nav-icon">📅</span>
+        <span>Scheduler</span>
+        <span class="nav-badge" id="snav-scheduler-badge">OFF</span>
+      </div>
 
       <div class="nav-item" data-nav="settings">
         <span class="nav-icon">⚙️</span>
@@ -128,6 +133,20 @@
           </div>
         </div>
 
+        <!-- ══ NEXUSGUARD — Anomaly Warning Banner ══ -->
+        <div class="emergency-banner" id="anomaly-banner" style="display:none; background: rgba(245, 158, 11, 0.1); border-color: var(--amber);">
+          <div class="emergency-icon" style="background: rgba(245, 158, 11, 0.2); color: var(--amber);">⚠️</div>
+          <div class="emergency-info">
+            <span class="emergency-title" style="color: var(--amber);">SENSOR INTERFERENCE DETECTED</span>
+            <span class="emergency-desc">
+              Unusual sensor readings (noise or hardware glitch) detected. Data integrity layer has <strong>BLOCKED</strong> automated climate control.
+            </span>
+            <div class="emergency-meta-row" id="anomaly-details">
+              <span class="emergency-chip" style="color: var(--amber); border-color: var(--amber);">🛡️ NexusGuard Active</span>
+            </div>
+          </div>
+        </div>
+
         <!-- ══ EMERGENCY SAFETY AGENT — Alert Banner ══ -->
         <div class="emergency-banner" id="emergency-banner" style="display:none">
           <div class="emergency-icon">🔥</div>
@@ -158,7 +177,10 @@
         <div>
           <div class="section-header" style="margin-bottom:.9rem">
             <span class="section-title">Environment</span>
-            <span class="section-badge">Live Data</span>
+            <div>
+              <span class="section-badge" id="ai-status-badge" style="background:var(--green); margin-right: 0.5rem">AI: STANDBY</span>
+              <span class="section-badge">Live Data</span>
+            </div>
           </div>
 
           <div class="env-card">
@@ -419,6 +441,107 @@
 
       </div><!-- end analytics-page -->
 
+      <!-- ══ SCHEDULER PAGE ══ -->
+      <div class="scheduler-page" id="scheduler-page" style="display:none">
+
+        <!-- Header -->
+        <div class="scheduler-page-header">
+          <div class="scheduler-header-left">
+            <h2 class="scheduler-title">📅 Smart Scheduler</h2>
+            <span class="scheduler-subtitle">Set your weekly presence schedule — devices auto-manage when you're away</span>
+          </div>
+          <div class="scheduler-header-right">
+            <div class="scheduler-status-indicator" id="sched-status-indicator">
+              <span class="sched-status-dot" id="sched-status-dot"></span>
+              <span id="sched-status-text">HOME 🏠</span>
+            </div>
+            <div class="scheduler-toggle-wrap">
+              <span class="sched-toggle-label">Scheduler</span>
+              <label class="sched-switch" id="sched-switch">
+                <input type="checkbox" id="sched-toggle-input">
+                <span class="sched-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info banner when scheduler is off -->
+        <div class="sched-off-banner" id="sched-off-banner">
+          <span class="sched-off-icon">💤</span>
+          <div class="sched-off-text">
+            <strong>Scheduler is disabled</strong> — All devices operate in manual mode. Toggle the switch above to activate your weekly schedule.
+          </div>
+        </div>
+
+        <!-- Away info banner -->
+        <div class="sched-away-banner" id="sched-away-banner" style="display:none">
+          <span class="sched-away-icon">🚗</span>
+          <div class="sched-away-text">
+            <strong>You're currently AWAY</strong> — All lights are OFF, door is LOCKED, and climate is on STANDBY. Only the fire alarm system remains active.
+          </div>
+        </div>
+
+        <!-- Schedule Slots -->
+        <div class="sched-section">
+          <div class="section-header" style="margin-bottom:.8rem">
+            <span class="section-title">Weekly Schedule</span>
+            <span class="section-badge" id="sched-slot-count">0 slots</span>
+          </div>
+
+          <div class="sched-slots-grid" id="sched-slots-grid">
+            <div class="sched-empty-state" id="sched-empty-state">
+              <div class="empty-icon">📅</div>
+              <div class="empty-title">No Schedule Slots Yet</div>
+              <div class="empty-desc">Add your first time block below to start automating your home based on your daily routine.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Schedule Form -->
+        <div class="sched-add-card">
+          <div class="sched-add-header">
+            <span class="sched-add-icon">➕</span>
+            <span class="sched-add-title">Add Schedule Slot</span>
+          </div>
+          <div class="sched-add-form">
+            <div class="sched-form-row">
+              <div class="sched-form-group">
+                <label class="sched-form-label">Day</label>
+                <select class="sched-input" id="sched-day">
+                  <option value="0">Monday</option>
+                  <option value="1">Tuesday</option>
+                  <option value="2">Wednesday</option>
+                  <option value="3">Thursday</option>
+                  <option value="4">Friday</option>
+                  <option value="5">Saturday</option>
+                  <option value="6">Sunday</option>
+                </select>
+              </div>
+              <div class="sched-form-group">
+                <label class="sched-form-label">From</label>
+                <input type="time" class="sched-input" id="sched-start" value="09:00">
+              </div>
+              <div class="sched-form-group">
+                <label class="sched-form-label">To</label>
+                <input type="time" class="sched-input" id="sched-end" value="17:00">
+              </div>
+              <div class="sched-form-group">
+                <label class="sched-form-label">Status</label>
+                <select class="sched-input" id="sched-status">
+                  <option value="AWAY">🚗 Away</option>
+                  <option value="HOME">🏠 Home</option>
+                </select>
+              </div>
+              <div class="sched-form-group">
+                <label class="sched-form-label">Label (optional)</label>
+                <input type="text" class="sched-input" id="sched-label" placeholder="e.g. Work Hours" maxlength="60">
+              </div>
+            </div>
+            <button class="sched-add-btn" id="sched-add-btn">➕ Add Slot</button>
+          </div>
+        </div>
+
+      </div><!-- end scheduler-page -->
 
 
       <!-- ══ DEVICE DETAIL MODAL ══ -->
@@ -487,9 +610,9 @@
       <span class="bnav-icon">📈</span>
       <span class="bnav-label">Analytics</span>
     </a>
-    <a class="bottom-nav-item" href="#" data-section="nightmode" id="bnav-night">
-      <span class="bnav-icon">🌙</span>
-      <span class="bnav-label">Night</span>
+    <a class="bottom-nav-item" href="#" data-section="scheduler" id="bnav-scheduler">
+      <span class="bnav-icon">📅</span>
+      <span class="bnav-label">Schedule</span>
     </a>
     <a class="bottom-nav-item" href="#" data-section="security" id="bnav-security">
       <span class="bnav-icon">🔒</span>
@@ -504,10 +627,11 @@
     const T_HUM = "mohith123/home/room1/humidity";
 
     // (Other existing topics from django context for logic completion)
-    const T_DOOR = "{{ topic_door }}";
-    const T_BED = "{{ topic_bed }}";
-    const T_HALL = "{{ topic_hall }}";
-    const T_LOCK = "{{ topic_lock }}";
+    const T_DOOR = "mohith123/home/door/light";
+    const T_BED = "mohith123/home/bedroom/light";
+    const T_HALL = "mohith123/home/hall/light";
+    const T_LOCK = "mohith123/home/door/lock";
+    const T_CLIMATE = "mohith123/home/climate/command";
 
     // ── State ──
     let mqttClient = null;
@@ -541,7 +665,7 @@
 
       mqttClient.on('connect', () => {
         setConnected(true);
-        [T_TEMP, T_HUM, T_DOOR, T_BED, T_HALL, T_LOCK].forEach(t => mqttClient.subscribe(t));
+        [T_TEMP, T_HUM, T_DOOR, T_BED, T_HALL, T_LOCK, T_CLIMATE].forEach(t => mqttClient.subscribe(t));
 
         // Re-enable UI logic buttons once connected — BUT NOT during lockdown
         if (!emergencyLockdown) {
@@ -589,6 +713,16 @@
         }
         if (topic === T_HALL) {
           if (!emergencyLockdown) { state.hall = payload; updateLight('hall'); }
+        }
+        if (topic === T_CLIMATE) {
+          const aiBadge = document.getElementById('ai-status-badge');
+          if (aiBadge) {
+             aiBadge.textContent = "AI: " + payload;
+             if (payload === "HEATER_ON") aiBadge.style.background = "var(--red)";
+             else if (payload === "AC_ON") aiBadge.style.background = "var(--cyan)";
+             else if (payload === "AWAY_STANDBY") aiBadge.style.background = "var(--amber)";
+             else aiBadge.style.background = "var(--green)";
+          }
         }
       });
     }
@@ -941,6 +1075,71 @@
     // Periodically sync lockdown state with the server (every 10 seconds)
     setInterval(checkLockdownStatus, 10000);
 
+    /**
+     * Poll the server for NexusGuard anomaly status.
+     * Updates the UI if sensor interference is detected.
+     */
+    function checkAnomalyStatus() {
+      fetch('/api/anomaly/status/')
+        .then(res => res.json())
+        .then(data => {
+          const banner = document.getElementById('anomaly-banner');
+          const aiBadge = document.getElementById('ai-status-badge');
+          const sysStatusText = document.getElementById('sys-status-text');
+          
+          // Don't show anomaly banner if we are actively in a fire lockdown
+          if (emergencyLockdown) {
+            banner.style.display = 'none';
+            return;
+          }
+
+          if (data.has_active_anomaly) {
+            banner.style.display = 'flex';
+            
+            if (aiBadge) {
+              aiBadge.textContent = "AI: BLOCKED — ANOMALY";
+              aiBadge.style.background = "var(--amber)";
+              aiBadge.style.color = "#000";
+            }
+            
+            if (sysStatusText && sysStatusText.textContent !== '🔴 FIRE EVACUATION ACTIVE') {
+               sysStatusText.textContent = "SENSOR INTERFERENCE DETECTED ⚠️";
+               sysStatusText.style.color = "var(--amber)";
+            }
+
+            // Update anomaly details if available
+            if (data.recent_anomalies && data.recent_anomalies.length > 0) {
+              const latest = data.recent_anomalies[0];
+              const detailsArea = document.getElementById('anomaly-details');
+              detailsArea.innerHTML = `
+                <span class="emergency-chip" style="color: var(--amber); border-color: var(--amber);">🛡️ NexusGuard</span>
+                <span class="emergency-chip" style="color: var(--amber); border-color: var(--amber);">🕒 ${latest.timestamp}</span>
+                <span class="emergency-chip" style="color: var(--amber); border-color: var(--amber);">🌡️ ${latest.temperature}°C / 💧 ${latest.humidity}%</span>
+              `;
+            }
+
+          } else {
+            banner.style.display = 'none';
+            if (aiBadge && aiBadge.textContent === "AI: BLOCKED — ANOMALY") {
+              aiBadge.textContent = "AI: STANDBY";
+              aiBadge.style.background = "var(--green)";
+              aiBadge.style.color = "#fff";
+            }
+            // Restore normal status if not in lockdown
+            if (sysStatusText && sysStatusText.textContent === "SENSOR INTERFERENCE DETECTED ⚠️") {
+               sysStatusText.textContent = "ALL SYSTEMS NOMINAL 🛡️";
+               sysStatusText.style.color = "var(--green)";
+            }
+          }
+        })
+        .catch(err => {
+          console.warn('Could not check anomaly status:', err);
+        });
+    }
+
+    // Periodically sync anomaly state with the server (every 10 seconds)
+    setInterval(checkAnomalyStatus, 10000);
+
     function toggleLight(zone) {
       if (emergencyLockdown) return;  // Blocked during lockdown
       const topics = { door: T_DOOR, bed: T_BED, hall: T_HALL };
@@ -1141,11 +1340,13 @@
       const dashBody = document.querySelector('.dashboard-body');
       const devicesPage = document.getElementById('devices-page');
       const analyticsPage = document.getElementById('analytics-page');
+      const schedulerPage = document.getElementById('scheduler-page');
 
       // Hide all pages
       dashBody.style.display = 'none';
       devicesPage.style.display = 'none';
       analyticsPage.style.display = 'none';
+      schedulerPage.style.display = 'none';
 
       if (view === 'devices') {
         devicesPage.style.display = 'flex';
@@ -1153,6 +1354,9 @@
       } else if (view === 'analytics') {
         analyticsPage.style.display = 'flex';
         fetchAnalytics();
+      } else if (view === 'scheduler') {
+        schedulerPage.style.display = 'flex';
+        fetchScheduler();
       } else {
         dashBody.style.display = '';
       }
@@ -1187,7 +1391,7 @@
     document.querySelectorAll('.sidebar .nav-item').forEach(item => {
       item.addEventListener('click', () => {
         const nav = item.dataset.nav;
-        if (nav === 'dashboard' || nav === 'devices' || nav === 'analytics') {
+        if (nav === 'dashboard' || nav === 'devices' || nav === 'analytics' || nav === 'scheduler') {
           switchView(nav);
         }
       });
@@ -1214,6 +1418,8 @@
           switchView('devices');
         } else if (section === 'analytics') {
           switchView('analytics');
+        } else if (section === 'scheduler') {
+          switchView('scheduler');
         } else if (section === 'security') {
           switchView('dashboard');
           setTimeout(() => {
@@ -1274,6 +1480,19 @@
               tension: 0.3,
               fill: true,
               yAxisID: 'yHum',
+            },
+            {
+              label: 'Outdoor Temp (°C)',
+              data: [],
+              borderColor: '#94a3b8',
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              tension: 0.3,
+              fill: false,
+              yAxisID: 'yTemp',
             },
           ],
         },
@@ -1348,10 +1567,12 @@
           const labels = readings.map(r => r.timestamp);
           const temps = readings.map(r => r.temperature);
           const hums = readings.map(r => r.humidity);
+          const outTemps = readings.map(r => r.outdoor_temp || 0);
 
           analyticsChart.data.labels = labels;
           analyticsChart.data.datasets[0].data = temps;
           analyticsChart.data.datasets[1].data = hums;
+          analyticsChart.data.datasets[2].data = outTemps;
           analyticsChart.update('none');
 
           updateAnalyticsStats(temps, hums, readings.length);
@@ -1380,12 +1601,16 @@
       analyticsChart.data.labels.push(now);
       analyticsChart.data.datasets[0].data.push(temp);
       analyticsChart.data.datasets[1].data.push(hum);
+      
+      const lastOutTemp = analyticsChart.data.datasets[2].data.length > 0 ? analyticsChart.data.datasets[2].data[analyticsChart.data.datasets[2].data.length - 1] : 0;
+      analyticsChart.data.datasets[2].data.push(lastOutTemp);
 
       // Trim to max points
       if (analyticsChart.data.labels.length > MAX_CHART_POINTS) {
         analyticsChart.data.labels.shift();
         analyticsChart.data.datasets[0].data.shift();
         analyticsChart.data.datasets[1].data.shift();
+        analyticsChart.data.datasets[2].data.shift();
       }
 
       analyticsChart.update('none');
@@ -1402,6 +1627,186 @@
     // Auto-refresh analytics every 30s when visible
     setInterval(() => {
       if (activeView === 'analytics') fetchAnalytics();
+    }, 30000);
+
+    // ══════════════════════════════════════════════
+    //  SCHEDULER — Frontend Logic
+    // ══════════════════════════════════════════════
+
+    let schedulerEnabled = false;
+    let schedulerSlots = [];
+
+    function fetchScheduler() {
+      fetch('/api/scheduler/')
+        .then(res => res.json())
+        .then(data => {
+          schedulerEnabled = data.is_enabled;
+          schedulerSlots = data.slots || [];
+          renderSchedulerPage(data);
+        })
+        .catch(err => console.warn('Failed to fetch scheduler:', err));
+    }
+
+    function renderSchedulerPage(data) {
+      // Toggle switch
+      const toggleInput = document.getElementById('sched-toggle-input');
+      toggleInput.checked = data.is_enabled;
+
+      // Sidebar badge
+      const snavBadge = document.getElementById('snav-scheduler-badge');
+      if (snavBadge) snavBadge.textContent = data.is_enabled ? 'ON' : 'OFF';
+
+      // Off banner vs away banner
+      const offBanner = document.getElementById('sched-off-banner');
+      const awayBanner = document.getElementById('sched-away-banner');
+      if (!data.is_enabled) {
+        offBanner.style.display = 'flex';
+        awayBanner.style.display = 'none';
+      } else {
+        offBanner.style.display = 'none';
+        if (data.current_status === 'AWAY') {
+          awayBanner.style.display = 'flex';
+        } else {
+          awayBanner.style.display = 'none';
+        }
+      }
+
+      // Status indicator
+      const statusDot = document.getElementById('sched-status-dot');
+      const statusText = document.getElementById('sched-status-text');
+      if (!data.is_enabled) {
+        statusDot.className = 'sched-status-dot disabled';
+        statusText.textContent = 'DISABLED 💤';
+      } else if (data.current_status === 'AWAY') {
+        statusDot.className = 'sched-status-dot away';
+        statusText.textContent = 'AWAY 🚗';
+      } else {
+        statusDot.className = 'sched-status-dot home';
+        statusText.textContent = 'HOME 🏠';
+      }
+
+      // Slot count
+      document.getElementById('sched-slot-count').textContent = data.slots.length + ' slot' + (data.slots.length !== 1 ? 's' : '');
+
+      // Render slots
+      const grid = document.getElementById('sched-slots-grid');
+      const emptyState = document.getElementById('sched-empty-state');
+
+      // Remove old slot cards
+      grid.querySelectorAll('.sched-slot-card').forEach(c => c.remove());
+
+      if (data.slots.length === 0) {
+        emptyState.style.display = 'flex';
+        return;
+      }
+      emptyState.style.display = 'none';
+
+      // Group by day
+      const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const dayEmojis = ['🟠', '🟣', '🔵', '🟢', '🟡', '🔴', '⚪'];
+
+      data.slots.forEach(slot => {
+        const card = document.createElement('div');
+        card.className = `sched-slot-card ${slot.status.toLowerCase()}`;
+        const statusIcon = slot.status === 'AWAY' ? '🚗' : '🏠';
+        const statusClass = slot.status === 'AWAY' ? 'away' : 'home';
+        card.innerHTML = `
+          <div class="sched-slot-left">
+            <span class="sched-slot-day-emoji">${dayEmojis[slot.day_of_week]}</span>
+            <div class="sched-slot-info">
+              <span class="sched-slot-day">${slot.day_name}</span>
+              <span class="sched-slot-time">${slot.start_time} — ${slot.end_time}</span>
+              ${slot.label ? `<span class="sched-slot-label">${slot.label}</span>` : ''}
+            </div>
+          </div>
+          <div class="sched-slot-right">
+            <span class="sched-slot-status ${statusClass}">${statusIcon} ${slot.status}</span>
+            <button class="sched-slot-delete" data-slot-id="${slot.id}" title="Delete">🗑️</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      // Wire delete buttons
+      grid.querySelectorAll('.sched-slot-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const slotId = btn.dataset.slotId;
+          deleteScheduleSlot(slotId);
+        });
+      });
+    }
+
+    function toggleScheduler() {
+      const toggleInput = document.getElementById('sched-toggle-input');
+      const newState = toggleInput.checked;
+
+      fetch('/api/scheduler/toggle/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newState }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          schedulerEnabled = data.is_enabled;
+          fetchScheduler();
+          if (navigator.vibrate) navigator.vibrate(30);
+        })
+        .catch(err => {
+          console.error('Toggle failed:', err);
+          toggleInput.checked = !newState; // revert
+        });
+    }
+
+    function addScheduleSlot() {
+      const day = parseInt(document.getElementById('sched-day').value);
+      const start = document.getElementById('sched-start').value;
+      const end = document.getElementById('sched-end').value;
+      const status = document.getElementById('sched-status').value;
+      const label = document.getElementById('sched-label').value;
+
+      if (!start || !end) {
+        alert('Please set both start and end times.');
+        return;
+      }
+
+      fetch('/api/scheduler/slot/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ day_of_week: day, start_time: start, end_time: end, status, label }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+          }
+          document.getElementById('sched-label').value = '';
+          fetchScheduler();
+          if (navigator.vibrate) navigator.vibrate(30);
+        })
+        .catch(err => console.error('Add slot failed:', err));
+    }
+
+    function deleteScheduleSlot(slotId) {
+      fetch(`/api/scheduler/slot/${slotId}/`, {
+        method: 'DELETE',
+      })
+        .then(res => res.json())
+        .then(data => {
+          fetchScheduler();
+          if (navigator.vibrate) navigator.vibrate(20);
+        })
+        .catch(err => console.error('Delete slot failed:', err));
+    }
+
+    // Wire up scheduler controls
+    document.getElementById('sched-toggle-input').addEventListener('change', toggleScheduler);
+    document.getElementById('sched-add-btn').addEventListener('click', addScheduleSlot);
+
+    // Auto-refresh scheduler every 30s when visible
+    setInterval(() => {
+      if (activeView === 'scheduler') fetchScheduler();
     }, 30000);
 
     // Initialise

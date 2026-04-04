@@ -5,6 +5,10 @@ from django.utils import timezone
 class SensorReading(models.Model):
     temperature = models.FloatField()
     humidity = models.FloatField()
+    outdoor_temp = models.FloatField(null=True, blank=True, help_text="Vaddeswaram Outdoor Temp")
+    outdoor_humidity = models.FloatField(null=True, blank=True, help_text="Vaddeswaram Outdoor Humidity")
+    ai_decision = models.CharField(max_length=20, null=True, blank=True, help_text="HEATER_ON, AC_ON, or STANDBY")
+    status = models.CharField(max_length=20, default='OK', help_text="OK, ANOMALY, or AWAY_STANDBY")
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
@@ -155,3 +159,85 @@ class DeviceHealthLog(models.Model):
 
     def __str__(self):
         return f"{self.device.name} | {self.status} | {self.health_score}% at {self.timestamp.strftime('%H:%M:%S')}"
+
+
+class SchedulerConfig(models.Model):
+    """
+    Singleton-style model for the scheduler master switch.
+    Only one row should exist. When is_enabled=True, the system will
+    consult ScheduleSlot entries to decide HOME vs AWAY.
+    """
+    is_enabled = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Scheduler Config"
+        verbose_name_plural = "Scheduler Config"
+
+    def __str__(self):
+        return f"Scheduler: {'✅ ON' if self.is_enabled else '⬛ OFF'}"
+
+    @classmethod
+    def get_config(cls):
+        """Get or create the singleton scheduler config row."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+DAY_CHOICES = [
+    (0, 'Monday'),
+    (1, 'Tuesday'),
+    (2, 'Wednesday'),
+    (3, 'Thursday'),
+    (4, 'Friday'),
+    (5, 'Saturday'),
+    (6, 'Sunday'),
+]
+
+
+class ScheduleSlot(models.Model):
+    """
+    A time-block for a specific day of the week.
+    The user marks periods as HOME or AWAY. Any time not covered
+    by a slot defaults to HOME.
+    """
+    STATUS_CHOICES = [
+        ('HOME', 'Home'),
+        ('AWAY', 'Away'),
+    ]
+
+    day_of_week = models.IntegerField(choices=DAY_CHOICES, help_text="0=Monday … 6=Sunday")
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='AWAY')
+    label = models.CharField(max_length=60, blank=True, default='', help_text="Optional label, e.g. 'Work Hours'")
+
+    class Meta:
+        ordering = ['day_of_week', 'start_time']
+        verbose_name = 'Schedule Slot'
+        verbose_name_plural = 'Schedule Slots'
+
+    def __str__(self):
+        day_name = dict(DAY_CHOICES).get(self.day_of_week, '?')
+        return f"{day_name} {self.start_time.strftime('%H:%M')}-{self.end_time.strftime('%H:%M')} → {self.status}"
+
+    @classmethod
+    def get_current_status(cls):
+        """
+        Determine whether the user is HOME or AWAY right now,
+        based on current day-of-week and time.
+        If no matching slot is found, defaults to HOME.
+        """
+        now = timezone.localtime(timezone.now())
+        # Python weekday: 0=Monday … 6=Sunday (matches our DAY_CHOICES)
+        current_day = now.weekday()
+        current_time = now.time()
+
+        matching_slot = cls.objects.filter(
+            day_of_week=current_day,
+            start_time__lte=current_time,
+            end_time__gt=current_time,
+        ).first()
+
+        if matching_slot:
+            return matching_slot.status
+        return 'HOME'

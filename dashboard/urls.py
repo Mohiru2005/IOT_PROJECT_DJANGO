@@ -19,4 +19,13 @@ urlpatterns = [
 
     # ── Analytics API ──
     path('api/analytics/', views.analytics_data, name='analytics-data'),
+
+    # ── NexusGuard Anomaly API ──
+    path('api/anomaly/status/', views.anomaly_status, name='anomaly-status'),
+
+    # ── Scheduler API ──
+    path('api/scheduler/', views.scheduler_data, name='scheduler-data'),
+    path('api/scheduler/toggle/', views.scheduler_toggle, name='scheduler-toggle'),
+    path('api/scheduler/slot/', views.scheduler_add_slot, name='scheduler-add-slot'),
+    path('api/scheduler/slot/<int:slot_id>/', views.scheduler_delete_slot, name='scheduler-delete-slot'),
 ]

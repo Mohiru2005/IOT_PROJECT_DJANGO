@@ -2873,3 +2873,596 @@ button:disabled {
     padding: 0.2rem 0.5rem;
   }
 }
+
+
+/* ══════════════════════════════════════
+   SCHEDULER PAGE
+══════════════════════════════════════ */
+
+.scheduler-page {
+  flex: 1;
+  display: flex;
+  overflow-y: auto;
+  padding: 1.2rem 2rem 2rem;
+  flex-direction: column;
+  gap: 1.2rem;
+  animation: fadeUp 0.5s var(--ease) both;
+}
+
+.scheduler-page::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scheduler-page::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 99px;
+}
+
+/* ── Scheduler Page Header ── */
+.scheduler-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+  padding: 1.2rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.scheduler-page-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 0% 50%, rgba(139, 92, 246, 0.08), transparent 50%),
+    radial-gradient(ellipse at 100% 50%, rgba(251, 191, 36, 0.05), transparent 50%);
+  pointer-events: none;
+}
+
+.scheduler-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.scheduler-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--text-1) 30%, var(--purple-bright) 70%, var(--amber));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.scheduler-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  font-weight: 500;
+  margin-top: 0.15rem;
+}
+
+.scheduler-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Status Indicator ── */
+.scheduler-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 99px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-2);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sched-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.sched-status-dot.home {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green-glow);
+  animation: blinkDot 2s ease-in-out infinite;
+}
+
+.sched-status-dot.away {
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber-glow);
+  animation: blinkDot 1.2s ease-in-out infinite;
+}
+
+.sched-status-dot.disabled {
+  background: var(--text-3);
+  box-shadow: none;
+  animation: none;
+}
+
+/* ── Toggle Switch ── */
+.scheduler-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.sched-toggle-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sched-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  display: inline-block;
+}
+
+.sched-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sched-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 99px;
+  transition: all 0.35s var(--ease);
+}
+
+.sched-slider::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: all 0.35s var(--ease);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sched-switch input:checked + .sched-slider {
+  background: linear-gradient(135deg, #3b1f80, #7c3aed);
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+}
+
+.sched-switch input:checked + .sched-slider::before {
+  left: calc(100% - 23px);
+  background: #fff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Info Banners ── */
+.sched-off-banner,
+.sched-away-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.4rem;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.sched-off-banner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.sched-off-banner strong {
+  color: var(--text-1);
+}
+
+.sched-off-icon,
+.sched-away-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+.sched-away-banner {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(245, 158, 11, 0.04));
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.sched-away-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  opacity: 0.6;
+}
+
+.sched-away-banner strong {
+  color: var(--amber);
+}
+
+/* ── Schedule Section ── */
+.sched-section {
+  margin-top: 0.2rem;
+}
+
+/* ── Schedule Slots Grid ── */
+.sched-slots-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.sched-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem 2rem;
+  gap: 0.6rem;
+}
+
+/* ── Schedule Slot Card ── */
+.sched-slot-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.3rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s var(--ease);
+}
+
+.sched-slot-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 99px;
+  transition: background 0.3s ease;
+}
+
+.sched-slot-card.away::before {
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber-glow);
+}
+
+.sched-slot-card.home::before {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green-glow);
+}
+
+.sched-slot-card:hover {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.sched-slot-left {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.sched-slot-day-emoji {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.sched-slot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.sched-slot-day {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.sched-slot-time {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-2);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sched-slot-label {
+  font-size: 0.68rem;
+  color: var(--text-3);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.sched-slot-right {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-shrink: 0;
+}
+
+.sched-slot-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.3rem 0.7rem;
+  border-radius: 99px;
+  letter-spacing: 0.04em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sched-slot-status.away {
+  background: var(--amber-dim);
+  color: var(--amber);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.sched-slot-status.home {
+  background: var(--green-dim);
+  color: var(--green);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+
+.sched-slot-delete {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.sched-slot-delete:hover {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.3);
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.2);
+}
+
+/* ── Add Schedule Card ── */
+.sched-add-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s var(--ease);
+}
+
+.sched-add-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 0% 100%, rgba(139, 92, 246, 0.06), transparent 50%);
+  pointer-events: none;
+}
+
+.sched-add-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.4), transparent);
+  opacity: 0.4;
+}
+
+.sched-add-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  position: relative;
+  z-index: 1;
+}
+
+.sched-add-icon {
+  font-size: 1.1rem;
+}
+
+.sched-add-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.sched-add-form {
+  position: relative;
+  z-index: 1;
+}
+
+.sched-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1.5fr;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+  align-items: end;
+}
+
+.sched-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sched-form-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-3);
+}
+
+.sched-input {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  outline: none;
+  transition: all 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 40px;
+  line-height: 1;
+}
+
+.sched-input:focus {
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sched-input option {
+  background: #0c101e;
+  color: var(--text-1);
+}
+
+/* Time input styling */
+.sched-input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+}
+
+.sched-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.6rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(91, 33, 182, 0.4), rgba(139, 92, 246, 0.2));
+  color: var(--purple-bright);
+  cursor: pointer;
+  transition: all 0.3s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+.sched-add-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(139, 92, 246, 0.15) 50%, transparent 65%);
+  transform: translateX(-120%);
+  transition: transform 0.5s ease;
+}
+
+.sched-add-btn:hover::before {
+  transform: translateX(120%);
+}
+
+.sched-add-btn:hover {
+  background: linear-gradient(135deg, rgba(91, 33, 182, 0.6), rgba(139, 92, 246, 0.35));
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.25);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+.sched-add-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Scheduler Responsive ── */
+@media (max-width: 768px) {
+  .scheduler-page {
+    padding: 1rem 0.85rem 6rem;
+  }
+
+  .scheduler-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.8rem;
+    padding: 1rem;
+  }
+
+  .scheduler-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .sched-form-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+
+  .sched-form-row .sched-form-group:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .sched-slot-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.7rem;
+  }
+
+  .sched-slot-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .sched-off-banner,
+  .sched-away-banner {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .sched-form-row {
+    grid-template-columns: 1fr;
+  }
+}
